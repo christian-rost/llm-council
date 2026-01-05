@@ -1,5 +1,5 @@
 /**
- * API client for the LLM Council backend.
+ * API client for the LLM Council backend with PDF support.
  */
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8001';
@@ -107,11 +107,19 @@ export const api = {
               case 'stage3_complete':
                 onStage3?.(parsed.data);
                 break;
-              case 'title_update':
-                onTitleUpdate?.(parsed.title);
+              case 'title_complete':
+                onTitleUpdate?.(parsed.data?.title);
                 break;
+              case 'complete':
+                // Streaming complete
+                return;
+              case 'error':
+                throw new Error(parsed.message || 'Unknown error');
             }
           } catch (e) {
+            if (e.message && !e.message.includes('JSON')) {
+              throw e; // Re-throw non-JSON errors
+            }
             console.error('Failed to parse SSE data:', e);
           }
         }
