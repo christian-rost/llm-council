@@ -165,30 +165,30 @@ function App() {
   };
 
   const getModelDisplayName = (modelId) => {
+    if (!modelId) return 'Unknown';
     const parts = modelId.split('/');
     return parts[parts.length - 1];
   };
 
   const renderStage1 = () => {
-    if (!stage1Results) return null;
-    const models = Object.keys(stage1Results);
+    if (!stage1Results || !Array.isArray(stage1Results) || stage1Results.length === 0) return null;
 
     return (
       <div className="stage-section">
         <h3>Stage 1: Individual Responses</h3>
         <div className="tabs">
-          {models.map((model, idx) => (
+          {stage1Results.map((result, idx) => (
             <button
-              key={model}
+              key={result.model || idx}
               className={`tab ${activeTab === idx ? 'active' : ''}`}
               onClick={() => setActiveTab(idx)}
             >
-              {getModelDisplayName(model)}
+              {getModelDisplayName(result.model)}
             </button>
           ))}
         </div>
         <div className="tab-content">
-          <ReactMarkdown>{stage1Results[models[activeTab]]}</ReactMarkdown>
+          <ReactMarkdown>{stage1Results[activeTab]?.response || 'No response'}</ReactMarkdown>
         </div>
       </div>
     );
@@ -200,13 +200,13 @@ function App() {
     return (
       <div className="stage-section">
         <h3>Stage 2: Peer Reviews</h3>
-        {metadata.aggregate_rankings && (
+        {metadata.aggregate_rankings && Array.isArray(metadata.aggregate_rankings) && (
           <div className="rankings">
             <h4>Aggregate Rankings</h4>
             <ol>
-              {metadata.aggregate_rankings.map(([model, score]) => (
-                <li key={model}>
-                  <strong>{getModelDisplayName(model)}</strong>: {score.toFixed(2)} avg rank
+              {metadata.aggregate_rankings.map((item, idx) => (
+                <li key={item.model || idx}>
+                  <strong>{getModelDisplayName(item.model)}</strong>: {item.average_rank?.toFixed(2) || 'N/A'} avg rank
                 </li>
               ))}
             </ol>
@@ -225,7 +225,7 @@ function App() {
         <div className="chairman-badge">
           Chairman: {getModelDisplayName(stage3Result.model)}
         </div>
-        <ReactMarkdown>{stage3Result.response}</ReactMarkdown>
+        <ReactMarkdown>{stage3Result.response || 'No response'}</ReactMarkdown>
       </div>
     );
   };
