@@ -6,88 +6,79 @@ const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8001';
 
 export const api = {
   /**
-   * List all conversations.
+   * List all conversations
    */
   async listConversations() {
     const response = await fetch(`${API_BASE}/api/conversations`);
-    if (!response.ok) {
-      throw new Error('Failed to list conversations');
-    }
+    if (!response.ok) throw new Error('Failed to fetch conversations');
     return response.json();
   },
 
   /**
-   * Create a new conversation.
+   * Create a new conversation
    */
   async createConversation() {
     const response = await fetch(`${API_BASE}/api/conversations`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
     });
-    if (!response.ok) {
-      throw new Error('Failed to create conversation');
-    }
+    if (!response.ok) throw new Error('Failed to create conversation');
     return response.json();
   },
 
   /**
-   * Get a specific conversation.
+   * Get a specific conversation
    */
   async getConversation(conversationId) {
-    const response = await fetch(
-      `${API_BASE}/api/conversations/${conversationId}`
-    );
-    if (!response.ok) {
-      throw new Error('Failed to get conversation');
-    }
+    const response = await fetch(`${API_BASE}/api/conversations/${conversationId}`);
+    if (!response.ok) throw new Error('Failed to fetch conversation');
     return response.json();
   },
 
   /**
-   * Send a message in a conversation.
+   * Delete a conversation
    */
-  async sendMessage(conversationId, content) {
-    const response = await fetch(
-      `${API_BASE}/api/conversations/${conversationId}/message`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ content }),
-      }
-    );
-    if (!response.ok) {
-      throw new Error('Failed to send message');
-    }
+  async deleteConversation(conversationId) {
+    const response = await fetch(`${API_BASE}/api/conversations/${conversationId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) throw new Error('Failed to delete conversation');
     return response.json();
   },
 
   /**
-   * Send a message and receive streaming updates.
-   * @param {string} conversationId - The conversation ID
-   * @param {string} content - The message content
-   * @param {function} onEvent - Callback function for each event: (eventType, data) => void
-   * @returns {Promise<void>}
+   * Send a message (non-streaming)
    */
-  async sendMessageStream(conversationId, content, onEvent) {
-    const response = await fetch(
-      `${API_BASE}/api/conversations/${conversationId}/message/stream`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ content }),
-      }
-    );
+  async sendMessage(conversationId, content, pdfData = null, pdfFilename = null) {
+    const response = await fetch(`${API_BASE}/api/conversations/${conversationId}/message`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        content,
+        pdf_data: pdfData,
+        pdf_filename: pdfFilename,
+      }),
+    });
+    if (!response.ok) throw new Error('Failed to send message');
+    return response.json();
+  },
 
-    if (!response.ok) {
-      throw new Error('Failed to send message');
-    }
+  /**
+   * Send a message with streaming response
+   */
+  async sendMessageStream(conversationId, content, onStage1, onStage2, onStage3, onTitleUpdate, pdfData = null, pdfFilename = null) {
+    const response = await fetch(`${API_BASE}/api/conversations/${conversationId}/message/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        content,
+        pdf_data: pdfData,
+        pdf_filename: pdfFilename,
+      }),
+    });
+
+    if (!response.ok) throw new Error('Failed to send message');
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -102,14 +93,50 @@ export const api = {
       for (const line of lines) {
         if (line.startsWith('data: ')) {
           const data = line.slice(6);
+          if (data === '[DONE]') return;
+
           try {
-            const event = JSON.parse(data);
-            onEvent(event.type, event);
+            const parsed = JSON.parse(data);
+            switch (parsed.type) {
+              case 'stage1_complete':
+                onStage1?.(parsed.data);
+                break;
+              case 'stage2_complete':
+                onStage2?.(parsed.data, parsed.metadata);
+                break;
+              case 'stage3_complete':
+                onStage3?.(parsed.data);
+                break;
+              case 'title_update':
+                onTitleUpdate?.(parsed.title);
+                break;
+            }
           } catch (e) {
-            console.error('Failed to parse SSE event:', e);
+            console.error('Failed to parse SSE data:', e);
           }
         }
       }
     }
+  },
+
+  /**
+   * Upload a PDF file and get base64 encoding
+   * The PDF will be sent to OpenRouter for native processing
+   */
+  async uploadPdf(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`${API_BASE}/api/upload-pdf`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to upload PDF');
+    }
+
+    return response.json();
   },
 };
