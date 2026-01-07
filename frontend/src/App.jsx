@@ -353,9 +353,9 @@ function App() {
                   <div className="message-header">LLM COUNCIL</div>
                   <div className="message-content council-response">
                     {renderLoadingStage()}
-                    {renderStage3()}
-                    {renderStage2()}
                     {renderStage1()}
+                    {renderStage2()}
+                    {renderStage3()}
                   </div>
                 </div>
               )}
