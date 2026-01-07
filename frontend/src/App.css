@@ -61,10 +61,12 @@ body {
 
 .conversation-item {
   padding: 12px;
+  padding-right: 36px;
   border-radius: 8px;
   cursor: pointer;
   margin-bottom: 4px;
   transition: background 0.2s;
+  position: relative;
 }
 
 .conversation-item:hover {
@@ -73,6 +75,31 @@ body {
 
 .conversation-item.active {
   background: #343541;
+}
+
+.conversation-item .delete-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.2s, color 0.2s, background 0.2s;
+}
+
+.conversation-item:hover .delete-btn {
+  opacity: 1;
+}
+
+.conversation-item .delete-btn:hover {
+  color: #ff4444;
+  background: rgba(255, 68, 68, 0.1);
 }
 
 .conversation-title {
