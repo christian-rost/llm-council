@@ -78,6 +78,25 @@ def save_conversation(conversation: Dict[str, Any]):
         json.dump(conversation, f, indent=2)
 
 
+def delete_conversation(conversation_id: str) -> bool:
+    """
+    Delete a conversation from storage.
+
+    Args:
+        conversation_id: Unique identifier for the conversation
+
+    Returns:
+        True if deleted, False if not found
+    """
+    path = get_conversation_path(conversation_id)
+
+    if not os.path.exists(path):
+        return False
+
+    os.remove(path)
+    return True
+
+
 def list_conversations() -> List[Dict[str, Any]]:
     """
     List all conversations (metadata only).
