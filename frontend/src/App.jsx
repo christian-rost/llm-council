@@ -63,6 +63,27 @@ function App() {
     }
   };
 
+  const deleteConversation = async (e, convId) => {
+    e.stopPropagation(); // Prevent selecting the conversation
+    
+    if (!confirm('Delete this conversation?')) return;
+    
+    try {
+      await api.deleteConversation(convId);
+      setConversations(conversations.filter(c => c.id !== convId));
+      
+      // If we deleted the current conversation, clear it
+      if (currentConversation?.id === convId) {
+        setCurrentConversation(null);
+        setMessages([]);
+        resetCouncilState();
+      }
+    } catch (error) {
+      console.error('Failed to delete conversation:', error);
+      alert('Failed to delete conversation');
+    }
+  };
+
   const resetCouncilState = () => {
     setStage1Results(null);
     setStage2Results(null);
@@ -170,6 +191,28 @@ function App() {
     return parts[parts.length - 1];
   };
 
+  // Extract the final response text from various message formats
+  const getAssistantResponseText = (content) => {
+    if (!content) return 'No response';
+    
+    // If it's a string, return it directly
+    if (typeof content === 'string') return content;
+    
+    // Try to get stage3 response (new format)
+    if (content.stage3?.response) return content.stage3.response;
+    
+    // Try to get from nested structure
+    if (content.response) return content.response;
+    
+    // If it's an array (old format), try to find the synthesis
+    if (Array.isArray(content)) {
+      const lastItem = content[content.length - 1];
+      if (lastItem?.response) return lastItem.response;
+    }
+    
+    return 'Response format not recognized';
+  };
+
   const renderStage1 = () => {
     if (!stage1Results || !Array.isArray(stage1Results) || stage1Results.length === 0) return null;
 
@@ -268,6 +311,13 @@ function App() {
               >
                 <span className="conversation-title">{conv.title}</span>
                 <span className="message-count">{conv.message_count} messages</span>
+                <button 
+                  className="delete-btn"
+                  onClick={(e) => deleteConversation(e, conv.id)}
+                  title="Delete conversation"
+                >
+                  ×
+                </button>
               </div>
             ))
           )}
@@ -292,7 +342,7 @@ function App() {
                     {msg.role === 'user' ? (
                       <p style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</p>
                     ) : (
-                      <ReactMarkdown>{msg.content?.stage3?.response || 'Processing...'}</ReactMarkdown>
+                      <ReactMarkdown>{getAssistantResponseText(msg.content)}</ReactMarkdown>
                     )}
                   </div>
                 </div>
