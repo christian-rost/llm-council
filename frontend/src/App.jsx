@@ -213,6 +213,71 @@ function App() {
     return 'Response format not recognized';
   };
 
+  // Check if a message has stage data (loaded from backend)
+  const hasStageData = (msg) => {
+    return msg.stage1 || msg.stage2 || msg.stage3;
+  };
+
+  // Render a loaded assistant message with stage data
+  const renderLoadedAssistantMessage = (msg) => {
+    // Ensure activeTab is within bounds for this message's stage1
+    const safeActiveTab = msg.stage1 && Array.isArray(msg.stage1) && msg.stage1.length > 0
+      ? Math.min(activeTab, msg.stage1.length - 1)
+      : 0;
+
+    return (
+      <div className="message-content council-response">
+        {msg.stage1 && Array.isArray(msg.stage1) && msg.stage1.length > 0 && (
+          <div className="stage-section">
+            <h3>Stage 1: Individual Responses</h3>
+            <div className="tabs">
+              {msg.stage1.map((result, idx) => (
+                <button
+                  key={result.model || idx}
+                  className={`tab ${safeActiveTab === idx ? 'active' : ''}`}
+                  onClick={() => setActiveTab(idx)}
+                >
+                  {getModelDisplayName(result.model)}
+                </button>
+              ))}
+            </div>
+            <div className="tab-content">
+              <ReactMarkdown>{msg.stage1[safeActiveTab]?.response || 'No response'}</ReactMarkdown>
+            </div>
+          </div>
+        )}
+        {msg.stage2 && Array.isArray(msg.stage2) && msg.stage2.length > 0 && (
+          <div className="stage-section">
+            <h3>Stage 2: Peer Reviews</h3>
+            {msg.metadata?.aggregate_rankings && Array.isArray(msg.metadata.aggregate_rankings) && msg.metadata.aggregate_rankings.length > 0 && (
+              <div className="rankings">
+                <h4>Aggregate Rankings</h4>
+                <ol>
+                  {msg.metadata.aggregate_rankings.map((item, idx) => (
+                    <li key={item.model || idx}>
+                      <strong>{getModelDisplayName(item.model)}</strong>: {item.average_rank?.toFixed(2) || 'N/A'} avg rank
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
+          </div>
+        )}
+        {msg.stage3 && (
+          <div className="stage-section final-answer">
+            <h3>Stage 3: Final Council Answer</h3>
+            {msg.stage3.model && (
+              <div className="chairman-badge">
+                Chairman: {getModelDisplayName(msg.stage3.model)}
+              </div>
+            )}
+            <ReactMarkdown>{msg.stage3.response || 'No response'}</ReactMarkdown>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderStage1 = () => {
     if (!stage1Results || !Array.isArray(stage1Results) || stage1Results.length === 0) return null;
 
@@ -338,13 +403,17 @@ function App() {
                   <div className="message-header">
                     {msg.role === 'user' ? 'YOU' : 'LLM COUNCIL'}
                   </div>
-                  <div className="message-content">
-                    {msg.role === 'user' ? (
+                  {msg.role === 'user' ? (
+                    <div className="message-content">
                       <p style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</p>
-                    ) : (
+                    </div>
+                  ) : hasStageData(msg) ? (
+                    renderLoadedAssistantMessage(msg)
+                  ) : (
+                    <div className="message-content">
                       <ReactMarkdown>{getAssistantResponseText(msg.content)}</ReactMarkdown>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               ))}
 
