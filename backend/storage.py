@@ -122,8 +122,13 @@ def list_conversations(user_id: Optional[str] = None) -> List[Dict[str, Any]]:
                 with open(path, 'r') as f:
                     data = json.load(f)
                     # Filter by user_id if provided
-                    if user_id is not None and data.get("user_id") != user_id:
-                        continue
+                    if user_id is not None:
+                        # Only return conversations that belong to this user
+                        # Skip conversations without user_id (old conversations before user management)
+                        conversation_user_id = data.get("user_id")
+                        if conversation_user_id is None or conversation_user_id != user_id:
+                            continue
+                    # If user_id is None (admin view), return all conversations
                     # Return metadata only
                     conversations.append({
                         "id": data["id"],
