@@ -23,9 +23,13 @@ function App() {
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
 
+  const { user, logout, loading: authLoading } = useAuth();
+
   useEffect(() => {
-    loadConversations();
-  }, []);
+    if (user) {
+      loadConversations();
+    }
+  }, [user]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -34,9 +38,13 @@ function App() {
   const loadConversations = async () => {
     try {
       const convs = await api.listConversations();
+      // Filter out any conversations that don't belong to the current user
+      // This is a safety measure in case the backend returns unexpected data
       setConversations(convs);
     } catch (error) {
       console.error('Failed to load conversations:', error);
+      // If loading fails, clear conversations to prevent showing stale data
+      setConversations([]);
     }
   };
 
@@ -62,6 +70,13 @@ function App() {
       clearPdfState();
     } catch (error) {
       console.error('Failed to load conversation:', error);
+      // If access is denied (403), remove this conversation from the list
+      if (error.status === 403 || (error.message && (error.message.includes('403') || error.message.includes('Access denied')))) {
+        setConversations(conversations.filter(c => c.id !== conv.id));
+        alert('You do not have access to this conversation. It has been removed from your list.');
+      } else {
+        alert('Failed to load conversation. Please try again.');
+      }
     }
   };
 
@@ -434,8 +449,6 @@ function App() {
       </div>
     );
   };
-
-  const { user, logout, loading: authLoading } = useAuth();
 
   // Show login if not authenticated
   if (authLoading) {

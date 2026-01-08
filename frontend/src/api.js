@@ -102,7 +102,16 @@ export const api = {
     const response = await fetch(`${API_BASE}/api/conversations`, {
       headers: this.getAuthHeaders(),
     });
-    if (!response.ok) throw new Error('Failed to fetch conversations');
+    if (!response.ok) {
+      let errorMessage = 'Failed to fetch conversations';
+      try {
+        const error = await response.json();
+        errorMessage = error.detail || errorMessage;
+      } catch (e) {
+        errorMessage = `Server error: ${response.status} ${response.statusText}`;
+      }
+      throw new Error(errorMessage);
+    }
     return response.json();
   },
 
@@ -126,7 +135,18 @@ export const api = {
     const response = await fetch(`${API_BASE}/api/conversations/${conversationId}`, {
       headers: this.getAuthHeaders(),
     });
-    if (!response.ok) throw new Error('Failed to fetch conversation');
+    if (!response.ok) {
+      let errorMessage = `Failed to fetch conversation (${response.status})`;
+      try {
+        const error = await response.json();
+        errorMessage = error.detail || errorMessage;
+      } catch (e) {
+        errorMessage = `Server error: ${response.status} ${response.statusText}`;
+      }
+      const error = new Error(errorMessage);
+      error.status = response.status;
+      throw error;
+    }
     return response.json();
   },
 
