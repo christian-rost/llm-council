@@ -29,32 +29,60 @@ export const api = {
    * Register a new user
    */
   async register(username, email, password) {
-    const response = await fetch(`${API_BASE}/api/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, email, password }),
-    });
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Failed to register');
+    try {
+      const response = await fetch(`${API_BASE}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, email, password }),
+      });
+      if (!response.ok) {
+        let errorMessage = 'Failed to register';
+        try {
+          const error = await response.json();
+          errorMessage = error.detail || errorMessage;
+        } catch (e) {
+          errorMessage = `Server error: ${response.status} ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
+      }
+      return response.json();
+    } catch (error) {
+      if (error.message && !error.message.includes('Server error')) {
+        throw error;
+      }
+      // Network error or fetch failed
+      throw new Error(`Cannot connect to server. Please check if the backend is running at ${API_BASE}`);
     }
-    return response.json();
   },
 
   /**
    * Login
    */
   async login(username, password) {
-    const response = await fetch(`${API_BASE}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
-    });
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Failed to login');
+    try {
+      const response = await fetch(`${API_BASE}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      if (!response.ok) {
+        let errorMessage = 'Failed to login';
+        try {
+          const error = await response.json();
+          errorMessage = error.detail || errorMessage;
+        } catch (e) {
+          errorMessage = `Server error: ${response.status} ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
+      }
+      return response.json();
+    } catch (error) {
+      if (error.message && !error.message.includes('Server error')) {
+        throw error;
+      }
+      // Network error or fetch failed
+      throw new Error(`Cannot connect to server. Please check if the backend is running at ${API_BASE}`);
     }
-    return response.json();
   },
 
   /**

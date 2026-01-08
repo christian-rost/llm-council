@@ -86,11 +86,13 @@ class ResetPasswordRequest(BaseModel):
 @app.get("/")
 async def root():
     """Health check endpoint."""
-    from .config import ADMIN_USERNAME
+    from .config import ADMIN_USERNAME, ADMIN_PASSWORD
     return {
         "status": "ok",
         "service": "LLM Council API",
-        "admin_configured": bool(ADMIN_USERNAME)
+        "admin_configured": bool(ADMIN_USERNAME and ADMIN_PASSWORD),
+        "admin_username_set": bool(ADMIN_USERNAME),
+        "admin_password_set": bool(ADMIN_PASSWORD)
     }
 
 
@@ -156,22 +158,25 @@ async def login(request: LoginRequest):
     """Login and get access token."""
     # Check if it's the admin user
     from .config import ADMIN_USERNAME, ADMIN_PASSWORD
-    if request.username == ADMIN_USERNAME and ADMIN_USERNAME and ADMIN_PASSWORD:
-        if request.password == ADMIN_PASSWORD:
-            access_token = auth.create_access_token("admin")
-            return {
-                "access_token": access_token,
-                "token_type": "bearer",
-                "user": {
-                    "id": "admin",
-                    "username": ADMIN_USERNAME,
-                    "email": "",
-                    "is_admin": True,
-                    "created_at": ""
+    
+    # Check admin login first (only if admin is configured)
+    if ADMIN_USERNAME and ADMIN_PASSWORD:
+        if request.username == ADMIN_USERNAME:
+            if request.password == ADMIN_PASSWORD:
+                access_token = auth.create_access_token("admin")
+                return {
+                    "access_token": access_token,
+                    "token_type": "bearer",
+                    "user": {
+                        "id": "admin",
+                        "username": ADMIN_USERNAME,
+                        "email": "",
+                        "is_admin": True,
+                        "created_at": ""
+                    }
                 }
-            }
-        else:
-            raise HTTPException(status_code=401, detail="Invalid username or password")
+            else:
+                raise HTTPException(status_code=401, detail="Invalid username or password")
     
     # Regular user login
     user = user_storage.get_user_by_username(request.username)
