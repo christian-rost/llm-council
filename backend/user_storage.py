@@ -85,6 +85,9 @@ def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
     """Get a user by username."""
     ensure_user_dir()
 
+    if not os.path.exists(USER_DATA_DIR):
+        return None
+
     for filename in os.listdir(USER_DATA_DIR):
         if filename.endswith('.json'):
             path = os.path.join(USER_DATA_DIR, filename)
@@ -98,6 +101,9 @@ def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
 def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
     """Get a user by email."""
     ensure_user_dir()
+
+    if not os.path.exists(USER_DATA_DIR):
+        return None
 
     for filename in os.listdir(USER_DATA_DIR):
         if filename.endswith('.json'):
@@ -119,20 +125,27 @@ def list_all_users() -> List[Dict[str, Any]]:
     """List all users (for admin)."""
     ensure_user_dir()
     
+    if not os.path.exists(USER_DATA_DIR):
+        return []
+    
     users = []
     for filename in os.listdir(USER_DATA_DIR):
         if filename.endswith('.json'):
             path = os.path.join(USER_DATA_DIR, filename)
-            with open(path, 'r') as f:
-                user = json.load(f)
-                # Don't include password hash
-                users.append({
-                    "id": user.get("id"),
-                    "username": user.get("username"),
-                    "email": user.get("email"),
-                    "created_at": user.get("created_at"),
-                    "is_active": user.get("is_active", True)
-                })
+            try:
+                with open(path, 'r') as f:
+                    user = json.load(f)
+                    # Don't include password hash
+                    users.append({
+                        "id": user.get("id"),
+                        "username": user.get("username"),
+                        "email": user.get("email"),
+                        "created_at": user.get("created_at"),
+                        "is_active": user.get("is_active", True)
+                    })
+            except (json.JSONDecodeError, IOError):
+                # Skip corrupted files
+                continue
     
     # Sort by creation time, newest first
     users.sort(key=lambda x: x.get("created_at", ""), reverse=True)

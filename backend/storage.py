@@ -111,22 +111,29 @@ def list_conversations(user_id: Optional[str] = None) -> List[Dict[str, Any]]:
     """
     ensure_data_dir()
 
+    if not os.path.exists(DATA_DIR):
+        return []
+
     conversations = []
     for filename in os.listdir(DATA_DIR):
         if filename.endswith('.json'):
             path = os.path.join(DATA_DIR, filename)
-            with open(path, 'r') as f:
-                data = json.load(f)
-                # Filter by user_id if provided
-                if user_id is not None and data.get("user_id") != user_id:
-                    continue
-                # Return metadata only
-                conversations.append({
-                    "id": data["id"],
-                    "created_at": data["created_at"],
-                    "title": data.get("title", "New Conversation"),
-                    "message_count": len(data["messages"])
-                })
+            try:
+                with open(path, 'r') as f:
+                    data = json.load(f)
+                    # Filter by user_id if provided
+                    if user_id is not None and data.get("user_id") != user_id:
+                        continue
+                    # Return metadata only
+                    conversations.append({
+                        "id": data["id"],
+                        "created_at": data["created_at"],
+                        "title": data.get("title", "New Conversation"),
+                        "message_count": len(data["messages"])
+                    })
+            except (json.JSONDecodeError, IOError):
+                # Skip corrupted files
+                continue
 
     # Sort by creation time, newest first
     conversations.sort(key=lambda x: x["created_at"], reverse=True)

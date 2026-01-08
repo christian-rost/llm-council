@@ -86,7 +86,12 @@ class ResetPasswordRequest(BaseModel):
 @app.get("/")
 async def root():
     """Health check endpoint."""
-    return {"status": "ok", "service": "LLM Council API"}
+    from .config import ADMIN_USERNAME
+    return {
+        "status": "ok",
+        "service": "LLM Council API",
+        "admin_configured": bool(ADMIN_USERNAME)
+    }
 
 
 @app.post("/api/upload-pdf")
@@ -236,8 +241,6 @@ async def get_conversation(
     
     # Admin can see all conversations
     if not auth.is_admin_user(current_user):
-    # Admin can see all conversations
-    if not auth.is_admin_user(current_user):
         # Check if user owns this conversation
         if conversation.get("user_id") != current_user["id"]:
             raise HTTPException(status_code=403, detail="Access denied")
@@ -255,9 +258,11 @@ async def delete_conversation(
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
     
-    # Check if user owns this conversation
-    if conversation.get("user_id") != current_user["id"]:
-        raise HTTPException(status_code=403, detail="Access denied")
+    # Admin can delete any conversation
+    if not auth.is_admin_user(current_user):
+        # Check if user owns this conversation
+        if conversation.get("user_id") != current_user["id"]:
+            raise HTTPException(status_code=403, detail="Access denied")
     
     success = storage.delete_conversation(conversation_id)
     if not success:
@@ -280,9 +285,11 @@ async def send_message(
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
     
-    # Check if user owns this conversation
-    if conversation.get("user_id") != current_user["id"]:
-        raise HTTPException(status_code=403, detail="Access denied")
+    # Admin can send messages to any conversation
+    if not auth.is_admin_user(current_user):
+        # Check if user owns this conversation
+        if conversation.get("user_id") != current_user["id"]:
+            raise HTTPException(status_code=403, detail="Access denied")
 
     # Check if this is the first message
     is_first_message = len(conversation["messages"]) == 0
@@ -335,9 +342,11 @@ async def send_message_stream(
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
     
-    # Check if user owns this conversation
-    if conversation.get("user_id") != current_user["id"]:
-        raise HTTPException(status_code=403, detail="Access denied")
+    # Admin can send messages to any conversation
+    if not auth.is_admin_user(current_user):
+        # Check if user owns this conversation
+        if conversation.get("user_id") != current_user["id"]:
+            raise HTTPException(status_code=403, detail="Access denied")
 
     # Check if this is the first message
     is_first_message = len(conversation["messages"]) == 0
