@@ -4,12 +4,76 @@
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8001';
 
+let authToken = null;
+
 export const api = {
+  /**
+   * Set authentication token
+   */
+  setToken(token) {
+    authToken = token;
+  },
+
+  /**
+   * Get authentication headers
+   */
+  getAuthHeaders() {
+    const headers = { 'Content-Type': 'application/json' };
+    if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`;
+    }
+    return headers;
+  },
+
+  /**
+   * Register a new user
+   */
+  async register(username, email, password) {
+    const response = await fetch(`${API_BASE}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, email, password }),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to register');
+    }
+    return response.json();
+  },
+
+  /**
+   * Login
+   */
+  async login(username, password) {
+    const response = await fetch(`${API_BASE}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to login');
+    }
+    return response.json();
+  },
+
+  /**
+   * Get current user info
+   */
+  async getCurrentUser() {
+    const response = await fetch(`${API_BASE}/api/auth/me`, {
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to fetch user info');
+    return response.json();
+  },
   /**
    * List all conversations
    */
   async listConversations() {
-    const response = await fetch(`${API_BASE}/api/conversations`);
+    const response = await fetch(`${API_BASE}/api/conversations`, {
+      headers: this.getAuthHeaders(),
+    });
     if (!response.ok) throw new Error('Failed to fetch conversations');
     return response.json();
   },
@@ -20,7 +84,7 @@ export const api = {
   async createConversation() {
     const response = await fetch(`${API_BASE}/api/conversations`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.getAuthHeaders(),
       body: JSON.stringify({}),
     });
     if (!response.ok) throw new Error('Failed to create conversation');
@@ -31,7 +95,9 @@ export const api = {
    * Get a specific conversation
    */
   async getConversation(conversationId) {
-    const response = await fetch(`${API_BASE}/api/conversations/${conversationId}`);
+    const response = await fetch(`${API_BASE}/api/conversations/${conversationId}`, {
+      headers: this.getAuthHeaders(),
+    });
     if (!response.ok) throw new Error('Failed to fetch conversation');
     return response.json();
   },
@@ -42,6 +108,7 @@ export const api = {
   async deleteConversation(conversationId) {
     const response = await fetch(`${API_BASE}/api/conversations/${conversationId}`, {
       method: 'DELETE',
+      headers: this.getAuthHeaders(),
     });
     if (!response.ok) throw new Error('Failed to delete conversation');
     return response.json();
@@ -53,7 +120,7 @@ export const api = {
   async sendMessage(conversationId, content, pdfData = null, pdfFilename = null) {
     const response = await fetch(`${API_BASE}/api/conversations/${conversationId}/message`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.getAuthHeaders(),
       body: JSON.stringify({
         content,
         pdf_data: pdfData,
@@ -70,7 +137,7 @@ export const api = {
   async sendMessageStream(conversationId, content, onStage1, onStage2, onStage3, onTitleUpdate, pdfData = null, pdfFilename = null) {
     const response = await fetch(`${API_BASE}/api/conversations/${conversationId}/message/stream`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.getAuthHeaders(),
       body: JSON.stringify({
         content,
         pdf_data: pdfData,
@@ -135,8 +202,14 @@ export const api = {
     const formData = new FormData();
     formData.append('file', file);
 
+    const headers = {};
+    if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`;
+    }
+
     const response = await fetch(`${API_BASE}/api/upload-pdf`, {
       method: 'POST',
+      headers,
       body: formData,
     });
 

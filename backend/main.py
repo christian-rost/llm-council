@@ -1,6 +1,6 @@
 """FastAPI backend for LLM Council with PDF support."""
 
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -10,7 +10,7 @@ import json
 import asyncio
 import base64
 
-from . import storage
+from . import storage, user_storage, auth
 from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
 
 app = FastAPI(title="LLM Council API")
@@ -58,6 +58,26 @@ class Conversation(BaseModel):
     messages: List[Dict[str, Any]]
 
 
+class RegisterRequest(BaseModel):
+    """Request to register a new user."""
+    username: str
+    email: str
+    password: str
+
+
+class LoginRequest(BaseModel):
+    """Request to login."""
+    username: str
+    password: str
+
+
+class TokenResponse(BaseModel):
+    """Response with access token."""
+    access_token: str
+    token_type: str = "bearer"
+    user: Dict[str, Any]
+
+
 @app.get("/")
 async def root():
     """Health check endpoint."""
@@ -65,7 +85,10 @@ async def root():
 
 
 @app.post("/api/upload-pdf")
-async def upload_pdf(file: UploadFile = File(...)):
+async def upload_pdf(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(auth.get_current_user)
+):
     """
     Upload a PDF file and return it as base64.
     The actual PDF processing is done by OpenRouter when sending to LLMs.
@@ -94,32 +117,115 @@ async def upload_pdf(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Error processing PDF: {str(e)}")
 
 
+@app.post("/api/auth/register")
+async def register(request: RegisterRequest):
+    """Register a new user."""
+    try:
+        user = user_storage.create_user(
+            username=request.username,
+            email=request.email,
+            password=request.password
+        )
+        access_token = auth.create_access_token(user["id"])
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": {
+                "id": user["id"],
+                "username": user["username"],
+                "email": user["email"],
+                "created_at": user["created_at"]
+            }
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/auth/login")
+async def login(request: LoginRequest):
+    """Login and get access token."""
+    user = user_storage.get_user_by_username(request.username)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    
+    if not user_storage.verify_password(user, request.password):
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    
+    if not user.get("is_active", True):
+        raise HTTPException(status_code=403, detail="User account is inactive")
+    
+    access_token = auth.create_access_token(user["id"])
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "id": user["id"],
+            "username": user["username"],
+            "email": user["email"],
+            "created_at": user["created_at"]
+        }
+    }
+
+
+@app.get("/api/auth/me")
+async def get_current_user_info(current_user: dict = Depends(auth.get_current_user)):
+    """Get current user information."""
+    return {
+        "id": current_user["id"],
+        "username": current_user["username"],
+        "email": current_user["email"],
+        "created_at": current_user["created_at"]
+    }
+
+
 @app.get("/api/conversations", response_model=List[ConversationMetadata])
-async def list_conversations():
-    """List all conversations (metadata only)."""
-    return storage.list_conversations()
+async def list_conversations(current_user: dict = Depends(auth.get_current_user)):
+    """List all conversations for the current user (metadata only)."""
+    return storage.list_conversations(user_id=current_user["id"])
 
 
 @app.post("/api/conversations", response_model=Conversation)
-async def create_conversation(request: CreateConversationRequest):
+async def create_conversation(
+    request: CreateConversationRequest,
+    current_user: dict = Depends(auth.get_current_user)
+):
     """Create a new conversation."""
     conversation_id = str(uuid.uuid4())
-    conversation = storage.create_conversation(conversation_id)
+    conversation = storage.create_conversation(conversation_id, user_id=current_user["id"])
     return conversation
 
 
 @app.get("/api/conversations/{conversation_id}", response_model=Conversation)
-async def get_conversation(conversation_id: str):
+async def get_conversation(
+    conversation_id: str,
+    current_user: dict = Depends(auth.get_current_user)
+):
     """Get a specific conversation with all its messages."""
     conversation = storage.get_conversation(conversation_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    # Check if user owns this conversation
+    if conversation.get("user_id") != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
     return conversation
 
 
 @app.delete("/api/conversations/{conversation_id}")
-async def delete_conversation(conversation_id: str):
+async def delete_conversation(
+    conversation_id: str,
+    current_user: dict = Depends(auth.get_current_user)
+):
     """Delete a conversation."""
+    conversation = storage.get_conversation(conversation_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    # Check if user owns this conversation
+    if conversation.get("user_id") != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
     success = storage.delete_conversation(conversation_id)
     if not success:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -127,7 +233,11 @@ async def delete_conversation(conversation_id: str):
 
 
 @app.post("/api/conversations/{conversation_id}/message")
-async def send_message(conversation_id: str, request: SendMessageRequest):
+async def send_message(
+    conversation_id: str,
+    request: SendMessageRequest,
+    current_user: dict = Depends(auth.get_current_user)
+):
     """
     Send a message and run the 3-stage council process.
     Returns the complete response with all stages.
@@ -136,6 +246,10 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
     conversation = storage.get_conversation(conversation_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    # Check if user owns this conversation
+    if conversation.get("user_id") != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     # Check if this is the first message
     is_first_message = len(conversation["messages"]) == 0
@@ -174,7 +288,11 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
 
 
 @app.post("/api/conversations/{conversation_id}/message/stream")
-async def send_message_stream(conversation_id: str, request: SendMessageRequest):
+async def send_message_stream(
+    conversation_id: str,
+    request: SendMessageRequest,
+    current_user: dict = Depends(auth.get_current_user)
+):
     """
     Send a message and stream the 3-stage council process.
     Returns Server-Sent Events as each stage completes.
@@ -183,6 +301,10 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
     conversation = storage.get_conversation(conversation_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    # Check if user owns this conversation
+    if conversation.get("user_id") != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     # Check if this is the first message
     is_first_message = len(conversation["messages"]) == 0

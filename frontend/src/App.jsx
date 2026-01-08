@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { api } from './api';
+import { useAuth } from './auth';
+import Login from './components/Login';
 import './App.css';
 
 function App() {
@@ -433,10 +435,39 @@ function App() {
     );
   };
 
+  const { user, logout, loading: authLoading } = useAuth();
+
+  // Show login if not authenticated
+  if (authLoading) {
+    return (
+      <div className="app">
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+          <div className="spinner"></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Login />;
+  }
+
   return (
     <div className="app">
       <aside className="sidebar">
-        <h1>LLM Council</h1>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <h1>LLM Council</h1>
+          <button 
+            className="logout-btn" 
+            onClick={logout}
+            title="Logout"
+          >
+            Logout
+          </button>
+        </div>
+        <div style={{ fontSize: '12px', color: '#888', marginBottom: '16px', paddingBottom: '16px', borderBottom: '1px solid #444' }}>
+          {user.username}
+        </div>
         <button className="new-chat-btn" onClick={createNewConversation}>
           + New Conversation
         </button>

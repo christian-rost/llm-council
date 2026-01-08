@@ -26,9 +26,22 @@ body {
 
 .sidebar h1 {
   font-size: 18px;
-  margin-bottom: 16px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid #444;
+  margin: 0;
+}
+
+.logout-btn {
+  background: #444;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.2s;
+}
+
+.logout-btn:hover {
+  background: #555;
 }
 
 .new-chat-btn {
