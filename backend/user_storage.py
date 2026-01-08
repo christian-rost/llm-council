@@ -4,7 +4,7 @@ import json
 import os
 import hashlib
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from pathlib import Path
 from .config import USER_DATA_DIR
 
@@ -113,4 +113,53 @@ def verify_password(user: Dict[str, Any], password: str) -> bool:
     """Verify a password against a user's password hash."""
     password_hash = hash_password(password)
     return user.get("password_hash") == password_hash
+
+
+def list_all_users() -> List[Dict[str, Any]]:
+    """List all users (for admin)."""
+    ensure_user_dir()
+    
+    users = []
+    for filename in os.listdir(USER_DATA_DIR):
+        if filename.endswith('.json'):
+            path = os.path.join(USER_DATA_DIR, filename)
+            with open(path, 'r') as f:
+                user = json.load(f)
+                # Don't include password hash
+                users.append({
+                    "id": user.get("id"),
+                    "username": user.get("username"),
+                    "email": user.get("email"),
+                    "created_at": user.get("created_at"),
+                    "is_active": user.get("is_active", True)
+                })
+    
+    # Sort by creation time, newest first
+    users.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    return users
+
+
+def delete_user(user_id: str) -> bool:
+    """Delete a user."""
+    path = get_user_path(user_id)
+    
+    if not os.path.exists(path):
+        return False
+    
+    os.remove(path)
+    return True
+
+
+def reset_user_password(user_id: str, new_password: str) -> bool:
+    """Reset a user's password."""
+    user = get_user(user_id)
+    if user is None:
+        return False
+    
+    user["password_hash"] = hash_password(new_password)
+    path = get_user_path(user_id)
+    with open(path, 'w') as f:
+        json.dump(user, f, indent=2)
+    
+    return True
 

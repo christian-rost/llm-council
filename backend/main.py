@@ -78,6 +78,11 @@ class TokenResponse(BaseModel):
     user: Dict[str, Any]
 
 
+class ResetPasswordRequest(BaseModel):
+    """Request to reset a user's password."""
+    new_password: str
+
+
 @app.get("/")
 async def root():
     """Health check endpoint."""
@@ -144,6 +149,26 @@ async def register(request: RegisterRequest):
 @app.post("/api/auth/login")
 async def login(request: LoginRequest):
     """Login and get access token."""
+    # Check if it's the admin user
+    from .config import ADMIN_USERNAME, ADMIN_PASSWORD
+    if request.username == ADMIN_USERNAME and ADMIN_USERNAME and ADMIN_PASSWORD:
+        if request.password == ADMIN_PASSWORD:
+            access_token = auth.create_access_token("admin")
+            return {
+                "access_token": access_token,
+                "token_type": "bearer",
+                "user": {
+                    "id": "admin",
+                    "username": ADMIN_USERNAME,
+                    "email": "",
+                    "is_admin": True,
+                    "created_at": ""
+                }
+            }
+        else:
+            raise HTTPException(status_code=401, detail="Invalid username or password")
+    
+    # Regular user login
     user = user_storage.get_user_by_username(request.username)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid username or password")
@@ -173,14 +198,18 @@ async def get_current_user_info(current_user: dict = Depends(auth.get_current_us
     return {
         "id": current_user["id"],
         "username": current_user["username"],
-        "email": current_user["email"],
-        "created_at": current_user["created_at"]
+        "email": current_user.get("email", ""),
+        "created_at": current_user.get("created_at", ""),
+        "is_admin": auth.is_admin_user(current_user)
     }
 
 
 @app.get("/api/conversations", response_model=List[ConversationMetadata])
 async def list_conversations(current_user: dict = Depends(auth.get_current_user)):
-    """List all conversations for the current user (metadata only)."""
+    """List all conversations for the current user (metadata only). Admin can see all conversations."""
+    # Admin can see all conversations
+    if auth.is_admin_user(current_user):
+        return storage.list_conversations(user_id=None)
     return storage.list_conversations(user_id=current_user["id"])
 
 
@@ -205,9 +234,13 @@ async def get_conversation(
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
     
-    # Check if user owns this conversation
-    if conversation.get("user_id") != current_user["id"]:
-        raise HTTPException(status_code=403, detail="Access denied")
+    # Admin can see all conversations
+    if not auth.is_admin_user(current_user):
+    # Admin can see all conversations
+    if not auth.is_admin_user(current_user):
+        # Check if user owns this conversation
+        if conversation.get("user_id") != current_user["id"]:
+            raise HTTPException(status_code=403, detail="Access denied")
     
     return conversation
 
@@ -373,6 +406,65 @@ async def send_message_stream(
             "Connection": "keep-alive",
         }
     )
+
+
+# Admin endpoints
+@app.get("/api/admin/users")
+async def list_all_users(admin: dict = Depends(auth.get_current_admin)):
+    """List all users (admin only)."""
+    users = user_storage.list_all_users()
+    return users
+
+
+@app.get("/api/admin/users/{user_id}")
+async def get_user_by_id(user_id: str, admin: dict = Depends(auth.get_current_admin)):
+    """Get a specific user by ID (admin only)."""
+    user = user_storage.get_user(user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Don't return password hash
+    return {
+        "id": user.get("id"),
+        "username": user.get("username"),
+        "email": user.get("email"),
+        "created_at": user.get("created_at"),
+        "is_active": user.get("is_active", True)
+    }
+
+
+@app.get("/api/admin/users/{user_id}/conversations", response_model=List[ConversationMetadata])
+async def get_user_conversations(user_id: str, admin: dict = Depends(auth.get_current_admin)):
+    """Get all conversations for a specific user (admin only)."""
+    return storage.list_conversations(user_id=user_id)
+
+
+@app.delete("/api/admin/users/{user_id}")
+async def delete_user_endpoint(user_id: str, admin: dict = Depends(auth.get_current_admin)):
+    """Delete a user (admin only)."""
+    if user_id == "admin":
+        raise HTTPException(status_code=400, detail="Cannot delete admin user")
+    
+    success = user_storage.delete_user(user_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"status": "deleted"}
+
+
+@app.post("/api/admin/users/{user_id}/reset-password")
+async def reset_user_password_endpoint(
+    user_id: str,
+    request: ResetPasswordRequest,
+    admin: dict = Depends(auth.get_current_admin)
+):
+    """Reset a user's password (admin only)."""
+    if user_id == "admin":
+        raise HTTPException(status_code=400, detail="Cannot reset admin password via API")
+    
+    success = user_storage.reset_user_password(user_id, request.new_password)
+    if not success:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"status": "password_reset"}
 
 
 if __name__ == "__main__":
