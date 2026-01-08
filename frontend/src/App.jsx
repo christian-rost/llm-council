@@ -227,6 +227,17 @@ function App() {
 
     return (
       <div className="message-content council-response">
+        {(msg.stage1 || msg.stage2 || msg.stage3) && (
+          <div className="copy-results-btn-container">
+            <button 
+              className="copy-results-btn" 
+              onClick={() => copyMessageResults(msg)}
+              title="Copy all results to clipboard"
+            >
+              📋 Copy Results
+            </button>
+          </div>
+        )}
         {msg.stage1 && Array.isArray(msg.stage1) && msg.stage1.length > 0 && (
           <div className="stage-section">
             <h3>Stage 1: Individual Responses</h3>
@@ -283,7 +294,9 @@ function App() {
 
     return (
       <div className="stage-section">
-        <h3>Stage 1: Individual Responses</h3>
+        <div className="stage-header">
+          <h3>Stage 1: Individual Responses</h3>
+        </div>
         <div className="tabs">
           {stage1Results.map((result, idx) => (
             <button
@@ -307,7 +320,9 @@ function App() {
 
     return (
       <div className="stage-section">
-        <h3>Stage 2: Peer Reviews</h3>
+        <div className="stage-header">
+          <h3>Stage 2: Peer Reviews</h3>
+        </div>
         {metadata.aggregate_rankings && Array.isArray(metadata.aggregate_rankings) && (
           <div className="rankings">
             <h4>Aggregate Rankings</h4>
@@ -329,13 +344,74 @@ function App() {
 
     return (
       <div className="stage-section final-answer">
-        <h3>Stage 3: Final Council Answer</h3>
+        <div className="stage-header">
+          <h3>Stage 3: Final Council Answer</h3>
+        </div>
         <div className="chairman-badge">
           Chairman: {getModelDisplayName(stage3Result.model)}
         </div>
         <ReactMarkdown>{stage3Result.response || 'No response'}</ReactMarkdown>
       </div>
     );
+  };
+
+  // Format and copy stage results to clipboard
+  const copyResultsToClipboard = (stage1Data, stage2Data, stage3Data, metadataData) => {
+    let text = '';
+
+    // Stage 1: Individual Responses
+    if (stage1Data && Array.isArray(stage1Data) && stage1Data.length > 0) {
+      text += '=== Stage 1: Individual Responses ===\n\n';
+      stage1Data.forEach((result, idx) => {
+        text += `--- ${getModelDisplayName(result.model)} ---\n`;
+        text += `${result.response || 'No response'}\n\n`;
+      });
+    }
+
+    // Stage 2: Peer Reviews
+    if (stage2Data && Array.isArray(stage2Data) && stage2Data.length > 0) {
+      text += '=== Stage 2: Peer Reviews ===\n\n';
+      if (metadataData?.aggregate_rankings && Array.isArray(metadataData.aggregate_rankings)) {
+        text += 'Aggregate Rankings:\n';
+        metadataData.aggregate_rankings.forEach((item, idx) => {
+          text += `${idx + 1}. ${getModelDisplayName(item.model)}: ${item.average_rank?.toFixed(2) || 'N/A'} avg rank\n`;
+        });
+        text += '\n';
+      }
+    }
+
+    // Stage 3: Final Council Answer
+    if (stage3Data) {
+      text += '=== Stage 3: Final Council Answer ===\n\n';
+      if (stage3Data.model) {
+        text += `Chairman: ${getModelDisplayName(stage3Data.model)}\n\n`;
+      }
+      text += `${stage3Data.response || 'No response'}\n`;
+    }
+
+    // Check if we have any data to copy
+    if (!text.trim()) {
+      alert('No results available to copy');
+      return;
+    }
+
+    // Copy to clipboard
+    navigator.clipboard.writeText(text).then(() => {
+      alert('Results copied to clipboard!');
+    }).catch((err) => {
+      console.error('Failed to copy to clipboard:', err);
+      alert('Failed to copy to clipboard');
+    });
+  };
+
+  // Copy current streaming results
+  const copyCurrentResults = () => {
+    copyResultsToClipboard(stage1Results, stage2Results, stage3Result, metadata);
+  };
+
+  // Copy results from a loaded message
+  const copyMessageResults = (msg) => {
+    copyResultsToClipboard(msg.stage1, msg.stage2, msg.stage3, msg.metadata);
   };
 
   const renderLoadingStage = () => {
@@ -421,6 +497,17 @@ function App() {
                 <div className="message assistant">
                   <div className="message-header">LLM COUNCIL</div>
                   <div className="message-content council-response">
+                    {(stage1Results || stage2Results || stage3Result) && (
+                      <div className="copy-results-btn-container">
+                        <button 
+                          className="copy-results-btn" 
+                          onClick={copyCurrentResults}
+                          title="Copy all results to clipboard"
+                        >
+                          📋 Copy Results
+                        </button>
+                      </div>
+                    )}
                     {renderLoadingStage()}
                     {renderStage1()}
                     {renderStage2()}
