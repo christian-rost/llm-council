@@ -1,5 +1,5 @@
 /**
- * API client for the LLM Council backend with PDF support.
+ * API client for the XQT5 5AIs backend with PDF support.
  */
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8001';

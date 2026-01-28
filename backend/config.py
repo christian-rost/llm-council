@@ -1,4 +1,4 @@
-"""Configuration for the LLM Council."""
+"""Configuration for XQT5 5AIs."""
 
 import os
 from dotenv import load_dotenv

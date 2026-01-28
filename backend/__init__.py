@@ -1,1 +1,1 @@
-"""LLM Council backend package."""
+"""XQT5 5AIs backend package."""

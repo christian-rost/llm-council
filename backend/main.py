@@ -1,4 +1,4 @@
-"""FastAPI backend for LLM Council with PDF support."""
+"""FastAPI backend for XQT5 5AIs with PDF support."""
 
 import logging
 import os
@@ -19,7 +19,7 @@ from .council import run_full_council, generate_conversation_title, stage1_colle
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="LLM Council API")
+app = FastAPI(title="XQT5 5AIs API")
 
 # CORS origins from environment variable (comma-separated) or defaults
 DEFAULT_CORS_ORIGINS = "http://localhost:5173,http://localhost:3000"
@@ -111,7 +111,7 @@ async def root():
     from .config import ADMIN_USERNAME, ADMIN_PASSWORD
     return {
         "status": "ok",
-        "service": "LLM Council API",
+        "service": "XQT5 5AIs API",
         "admin_configured": bool(ADMIN_USERNAME and ADMIN_PASSWORD),
         "admin_username_set": bool(ADMIN_USERNAME),
         "admin_password_set": bool(ADMIN_PASSWORD)
