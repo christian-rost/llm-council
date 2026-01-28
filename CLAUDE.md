@@ -1,10 +1,18 @@
-# CLAUDE.md - Technical Notes for LLM Council
+# CLAUDE.md - Technical Notes for XQT5 5AIs
 
 This file contains technical details, architectural decisions, and important implementation notes for future development sessions.
 
+## Current State
+
+- **Branch**: `version01` (aktive Entwicklung)
+- **Produktname**: XQT5 5AIs (umbenannt von "LLM Council")
+- **Deployment**: Coolify auf VPS
+  - Frontend: https://5ais.xqtfive.com
+  - Backend: Separate Instanz
+
 ## Project Overview
 
-LLM Council is a 3-stage deliberation system where multiple LLMs collaboratively answer user questions. The key innovation is anonymized peer review in Stage 2, preventing models from playing favorites.
+XQT5 5AIs is a 3-stage deliberation system where multiple LLMs collaboratively answer user questions. The key innovation is anonymized peer review in Stage 2, preventing models from playing favorites.
 
 ## Architecture
 
@@ -14,74 +22,110 @@ LLM Council is a 3-stage deliberation system where multiple LLMs collaboratively
 - Contains `COUNCIL_MODELS` (list of OpenRouter model identifiers)
 - Contains `CHAIRMAN_MODEL` (model that synthesizes final answer)
 - Uses environment variable `OPENROUTER_API_KEY` from `.env`
-- Backend runs on **port 8001** (NOT 8000 - user had another app on 8000)
+- Backend runs on **port 8001**
+- JWT configuration: `JWT_SECRET`, `JWT_ALGORITHM`, `JWT_EXPIRATION_HOURS`
+- Admin credentials: `admin_user`, `admin_pw` (environment variables)
+
+**`user_storage.py`**
+- JSON-based user storage in `data/users/`
+- **Bcrypt password hashing** via passlib (NOT SHA-256)
+- User CRUD operations with error handling
+- Functions: `create_user()`, `get_user_by_username()`, `get_user_by_email()`, `verify_password()`
+
+**`auth.py`**
+- JWT token creation and validation
+- `get_current_user()`: Dependency for protected routes
+- `get_current_admin()`: Dependency for admin-only routes
+- `is_admin_user()`: Check if user is admin
 
 **`openrouter.py`**
-- `query_model()`: Single async model query
+- `query_model()`: Single async model query with logging
 - `query_models_parallel()`: Parallel queries using `asyncio.gather()`
 - Returns dict with 'content' and optional 'reasoning_details'
 - Graceful degradation: returns None on failure, continues with successful responses
 
 **`council.py`** - The Core Logic
 - `stage1_collect_responses()`: Parallel queries to all council models
-- `stage2_collect_rankings()`:
-  - Anonymizes responses as "Response A, B, C, etc."
-  - Creates `label_to_model` mapping for de-anonymization
-  - Prompts models to evaluate and rank (with strict format requirements)
-  - Returns tuple: (rankings_list, label_to_model_dict)
-  - Each ranking includes both raw text and `parsed_ranking` list
-- `stage3_synthesize_final()`: Chairman synthesizes from all responses + rankings
-- `parse_ranking_from_text()`: Extracts "FINAL RANKING:" section, handles both numbered lists and plain format
-- `calculate_aggregate_rankings()`: Computes average rank position across all peer evaluations
+- `stage2_collect_rankings()`: Anonymized peer rankings
+- `stage3_synthesize_final()`: Chairman synthesizes final answer
+- `parse_ranking_from_text()`: Extracts "FINAL RANKING:" section
+- `calculate_aggregate_rankings()`: Computes average rank position
 
 **`storage.py`**
 - JSON-based conversation storage in `data/conversations/`
-- Each conversation: `{id, created_at, messages[]}`
-- Assistant messages contain: `{role, stage1, stage2, stage3}`
-- Note: metadata (label_to_model, aggregate_rankings) is NOT persisted to storage, only returned via API
+- Each conversation: `{id, user_id, created_at, title, messages[]}`
+- User isolation: Users can only see their own conversations
 
 **`main.py`**
-- FastAPI app with CORS enabled for localhost:5173 and localhost:3000
-- POST `/api/conversations/{id}/message` returns metadata in addition to stages
-- Metadata includes: label_to_model mapping and aggregate_rankings
+- FastAPI app with CORS middleware
+- **CORS origins configurable via `CORS_ORIGINS` environment variable**
+- Authentication endpoints: `/api/auth/register`, `/api/auth/login`, `/api/auth/me`
+- Admin endpoints: `/api/admin/users`, `/api/admin/users/{id}`, etc.
+- Input validation on registration (username 3-32 chars, EmailStr, password min 8 chars)
+- Internal errors not exposed to clients
 
 ### Frontend Structure (`frontend/src/`)
 
 **`App.jsx`**
 - Main orchestration: manages conversations list and current conversation
-- Handles message sending and metadata storage
-- Important: metadata is stored in the UI state for display but not persisted to backend JSON
+- Handles authentication state
+- PDF upload support
+
+**`auth.jsx`**
+- Authentication context provider
+- Token management in localStorage
+- Login/logout/register functions
+
+**`components/Login.jsx`**
+- Login and registration forms
+- Tab-based UI for switching between login/register
 
 **`components/ChatInterface.jsx`**
 - Multiline textarea (3 rows, resizable)
 - Enter to send, Shift+Enter for new line
-- User messages wrapped in markdown-content class for padding
 
-**`components/Stage1.jsx`**
-- Tab view of individual model responses
-- ReactMarkdown rendering with markdown-content wrapper
-
-**`components/Stage2.jsx`**
-- **Critical Feature**: Tab view showing RAW evaluation text from each model
-- De-anonymization happens CLIENT-SIDE for display (models receive anonymous labels)
-- Shows "Extracted Ranking" below each evaluation so users can validate parsing
-- Aggregate rankings shown with average position and vote count
-- Explanatory text clarifies that boldface model names are for readability only
-
-**`components/Stage3.jsx`**
-- Final synthesized answer from chairman
-- Green-tinted background (#f0fff0) to highlight conclusion
+**`components/Stage1.jsx`**, **`Stage2.jsx`**, **`Stage3.jsx`**
+- Tab views for individual model responses
+- ReactMarkdown rendering
 
 **Styling (`*.css`)**
-- Light mode theme (not dark mode)
-- Primary color: #4a90e2 (blue)
-- Global markdown styling in `index.css` with `.markdown-content` class
-- 12px padding on all markdown content to prevent cluttered appearance
+- **XQT5 Corporate Design**:
+  - Primary color: `#ee7f00` (Orange)
+  - Dark color: `#213452` (Navy-Blau)
+  - White: `#ffffff`
+- CSS Variables in `index.css` für konsistentes Theming
+- Light mode theme
+
+## Environment Variables
+
+### Backend
+
+| Variable | Beschreibung | Pflicht |
+|----------|--------------|---------|
+| `OPENROUTER_API_KEY` | API-Key für OpenRouter | Ja |
+| `JWT_SECRET` | Secret für JWT-Token | Ja (Production) |
+| `admin_user` | Admin-Benutzername | Ja |
+| `admin_pw` | Admin-Passwort | Ja |
+| `CORS_ORIGINS` | Erlaubte Origins (kommasepariert) | Nein (Default: localhost) |
+
+### Frontend
+
+| Variable | Beschreibung | Pflicht |
+|----------|--------------|---------|
+| `VITE_API_BASE` | Backend-URL | Ja (Production) |
+
+## Security Features (version01)
+
+1. **Bcrypt Password Hashing**: Ersetzt SHA-256, nutzt passlib
+2. **Input Validation**: Pydantic validators für Registration
+3. **CORS Restriction**: Nur spezifische Methods/Headers erlaubt
+4. **Error Handling**: Interne Fehler nicht an Client exponiert
+5. **Logging**: Proper logging statt print statements
+6. **User Isolation**: Benutzer sehen nur eigene Conversations
 
 ## Key Design Decisions
 
 ### Stage 2 Prompt Format
-The Stage 2 prompt is very specific to ensure parseable output:
 ```
 1. Evaluate each response individually first
 2. Provide "FINAL RANKING:" header
@@ -89,61 +133,32 @@ The Stage 2 prompt is very specific to ensure parseable output:
 4. No additional text after ranking section
 ```
 
-This strict format allows reliable parsing while still getting thoughtful evaluations.
-
 ### De-anonymization Strategy
 - Models receive: "Response A", "Response B", etc.
 - Backend creates mapping: `{"Response A": "openai/gpt-5.1", ...}`
-- Frontend displays model names in **bold** for readability
-- Users see explanation that original evaluation used anonymous labels
+- Frontend displays model names for readability
 - This prevents bias while maintaining transparency
 
 ### Error Handling Philosophy
-- Continue with successful responses if some models fail (graceful degradation)
+- Continue with successful responses if some models fail
 - Never fail the entire request due to single model failure
-- Log errors but don't expose to user unless all models fail
-
-### UI/UX Transparency
-- All raw outputs are inspectable via tabs
-- Parsed rankings shown below raw text for validation
-- Users can verify system's interpretation of model outputs
-- This builds trust and allows debugging of edge cases
+- Log errors internally, show generic messages to users
 
 ## Important Implementation Details
 
 ### Relative Imports
-All backend modules use relative imports (e.g., `from .config import ...`) not absolute imports. This is critical for Python's module system to work correctly when running as `python -m backend.main`.
+All backend modules use relative imports (e.g., `from .config import ...`). Run backend as `python -m backend.main` from project root.
 
-### Port Configuration
-- Backend: 8001 (changed from 8000 to avoid conflict)
-- Frontend: 5173 (Vite default)
-- Update both `backend/main.py` and `frontend/src/api.js` if changing
-
-### Markdown Rendering
-All ReactMarkdown components must be wrapped in `<div className="markdown-content">` for proper spacing. This class is defined globally in `index.css`.
-
-### Model Configuration
-Models are hardcoded in `backend/config.py`. Chairman can be same or different from council members. The current default is Gemini as chairman per user preference.
+### Dependencies
+- `pydantic[email]` - Required for EmailStr validation
+- `passlib[bcrypt]` - Required for password hashing
 
 ## Common Gotchas
 
-1. **Module Import Errors**: Always run backend as `python -m backend.main` from project root, not from backend directory
-2. **CORS Issues**: Frontend must match allowed origins in `main.py` CORS middleware
-3. **Ranking Parse Failures**: If models don't follow format, fallback regex extracts any "Response X" patterns in order
-4. **Missing Metadata**: Metadata is ephemeral (not persisted), only available in API responses
-
-## Future Enhancement Ideas
-
-- Configurable council/chairman via UI instead of config file
-- Streaming responses instead of batch loading
-- Export conversations to markdown/PDF
-- Model performance analytics over time
-- Custom ranking criteria (not just accuracy/insight)
-- Support for reasoning models (o1, etc.) with special handling
-
-## Testing Notes
-
-Use `test_openrouter.py` to verify API connectivity and test different model identifiers before adding to council. The script tests both streaming and non-streaming modes.
+1. **Module Import Errors**: Run `python -m backend.main` from project root
+2. **CORS Issues**: Set `CORS_ORIGINS` environment variable for production
+3. **Email Validation Error**: Ensure `pydantic[email]` is installed
+4. **Password Hashing**: Old SHA-256 hashes are incompatible with bcrypt
 
 ## Data Flow Summary
 
@@ -163,4 +178,37 @@ Return: {stage1, stage2, stage3, metadata}
 Frontend: Display with tabs + validation UI
 ```
 
-The entire flow is async/parallel where possible to minimize latency.
+## Files Overview
+
+```
+llm-council/
+├── backend/
+│   ├── __init__.py
+│   ├── auth.py          # JWT authentication
+│   ├── config.py        # Configuration & env vars
+│   ├── council.py       # 3-stage logic
+│   ├── main.py          # FastAPI app
+│   ├── openrouter.py    # LLM API client
+│   ├── storage.py       # Conversation storage
+│   └── user_storage.py  # User storage (bcrypt)
+├── frontend/
+│   ├── src/
+│   │   ├── api.js       # API client
+│   │   ├── auth.jsx     # Auth context
+│   │   ├── App.jsx      # Main app
+│   │   ├── App.css      # Main styles
+│   │   ├── index.css    # CSS variables
+│   │   └── components/
+│   └── index.html
+├── CLAUDE.md            # Diese Datei
+├── CHANGELOG.md         # Entwicklungsstand
+└── pyproject.toml       # Python dependencies
+```
+
+## Nächste Schritte
+
+- [ ] Rate Limiting implementieren
+- [ ] Passwort-Zurücksetzen per E-Mail
+- [ ] Token-Refresh-Mechanismus
+- [ ] Unit Tests
+- [ ] Migration zu Datenbank
