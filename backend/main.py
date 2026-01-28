@@ -1,17 +1,22 @@
 """FastAPI backend for LLM Council with PDF support."""
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Depends
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
-from typing import List, Dict, Any, Optional
+import logging
+import re
 import uuid
 import json
 import asyncio
 import base64
 
+from fastapi import FastAPI, HTTPException, UploadFile, File, Depends
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, field_validator, EmailStr
+from typing import List, Dict, Any, Optional
+
 from . import storage, user_storage, auth
 from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="LLM Council API")
 
@@ -19,14 +24,14 @@ app = FastAPI(title="LLM Council API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173", 
+        "http://localhost:5173",
         "http://localhost:3000",
         "https://llm-council-frontend.xqtfive.de",
         "https://llm-frontend.xqtfive.de"
     ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 
@@ -61,8 +66,24 @@ class Conversation(BaseModel):
 class RegisterRequest(BaseModel):
     """Request to register a new user."""
     username: str
-    email: str
+    email: EmailStr
     password: str
+
+    @field_validator('username')
+    @classmethod
+    def validate_username(cls, v: str) -> str:
+        if len(v) < 3 or len(v) > 32:
+            raise ValueError('Username must be between 3 and 32 characters')
+        if not re.match(r'^[a-zA-Z0-9_]+$', v):
+            raise ValueError('Username can only contain letters, numbers, and underscores')
+        return v
+
+    @field_validator('password')
+    @classmethod
+    def validate_password(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError('Password must be at least 8 characters long')
+        return v
 
 
 class LoginRequest(BaseModel):
@@ -126,7 +147,8 @@ async def upload_pdf(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error processing PDF: {str(e)}")
+        logger.error(f"Error processing PDF: {e}")
+        raise HTTPException(status_code=500, detail="Error processing PDF file")
 
 
 @app.post("/api/auth/register")
@@ -409,8 +431,9 @@ async def send_message_stream(
             yield f"data: {json.dumps({'type': 'complete'})}\n\n"
 
         except Exception as e:
-            # Send error event
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            # Send error event (don't expose internal details)
+            logger.error(f"Error in streaming response: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': 'An error occurred processing your request'})}\n\n"
 
     return StreamingResponse(
         event_generator(),

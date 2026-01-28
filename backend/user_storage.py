@@ -2,11 +2,17 @@
 
 import json
 import os
-import hashlib
+import logging
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 from pathlib import Path
+from passlib.context import CryptContext
 from .config import USER_DATA_DIR
+
+logger = logging.getLogger(__name__)
+
+# Password hashing context using bcrypt
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def ensure_user_dir():
@@ -20,8 +26,8 @@ def get_user_path(user_id: str) -> str:
 
 
 def hash_password(password: str) -> str:
-    """Hash a password using SHA-256."""
-    return hashlib.sha256(password.encode()).hexdigest()
+    """Hash a password using bcrypt."""
+    return pwd_context.hash(password)
 
 
 def create_user(username: str, email: str, password: str) -> Dict[str, Any]:
@@ -91,10 +97,14 @@ def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
     for filename in os.listdir(USER_DATA_DIR):
         if filename.endswith('.json'):
             path = os.path.join(USER_DATA_DIR, filename)
-            with open(path, 'r') as f:
-                user = json.load(f)
-                if user.get("username") == username:
-                    return user
+            try:
+                with open(path, 'r') as f:
+                    user = json.load(f)
+                    if user.get("username") == username:
+                        return user
+            except (json.JSONDecodeError, IOError) as e:
+                logger.warning(f"Error reading user file {path}: {e}")
+                continue
     return None
 
 
@@ -108,17 +118,21 @@ def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
     for filename in os.listdir(USER_DATA_DIR):
         if filename.endswith('.json'):
             path = os.path.join(USER_DATA_DIR, filename)
-            with open(path, 'r') as f:
-                user = json.load(f)
-                if user.get("email") == email:
-                    return user
+            try:
+                with open(path, 'r') as f:
+                    user = json.load(f)
+                    if user.get("email") == email:
+                        return user
+            except (json.JSONDecodeError, IOError) as e:
+                logger.warning(f"Error reading user file {path}: {e}")
+                continue
     return None
 
 
 def verify_password(user: Dict[str, Any], password: str) -> bool:
     """Verify a password against a user's password hash."""
-    password_hash = hash_password(password)
-    return user.get("password_hash") == password_hash
+    stored_hash = user.get("password_hash", "")
+    return pwd_context.verify(password, stored_hash)
 
 
 def list_all_users() -> List[Dict[str, Any]]:
