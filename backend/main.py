@@ -1,6 +1,7 @@
 """FastAPI backend for LLM Council with PDF support."""
 
 import logging
+import os
 import re
 import uuid
 import json
@@ -20,14 +21,15 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="LLM Council API")
 
+# CORS origins from environment variable (comma-separated) or defaults
+DEFAULT_CORS_ORIGINS = "http://localhost:5173,http://localhost:3000"
+cors_origins_str = os.getenv("CORS_ORIGINS", DEFAULT_CORS_ORIGINS)
+cors_origins = [origin.strip() for origin in cors_origins_str.split(",") if origin.strip()]
+
 # Enable CORS for local development and production
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "https://5ais.xqtfive.com",
-    ],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
