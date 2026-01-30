@@ -102,16 +102,16 @@ Das Projekt wird über Coolify auf einem VPS deployed:
 - Frontend: https://5ais.xqtfive.com
 - Backend: Separate Coolify-Instanz
 
-### Bekannte Einschränkungen
+### Bekannte Einschränkungen (version01)
 
-- Keine Rate-Limiting-Implementierung
+- ~~Keine Rate-Limiting-Implementierung~~ → Behoben in version02
 - Keine Passwort-Zurücksetzen-Funktion für Benutzer (nur Admin)
 - Metadaten werden nicht persistent gespeichert
 - Kein automatisches Token-Refresh
 
 ### Nächste Schritte
 
-- [ ] Rate Limiting implementieren
+- [x] Rate Limiting implementieren (version02)
 - [ ] Passwort-Zurücksetzen per E-Mail
 - [ ] Token-Refresh-Mechanismus
 - [ ] Unit Tests hinzufügen

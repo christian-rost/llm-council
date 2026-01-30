@@ -63,6 +63,11 @@ XQT5 5AIs is a 3-stage deliberation system where multiple LLMs collaboratively a
 - Admin endpoints: `/api/admin/users`, `/api/admin/users/{id}`, etc.
 - Input validation on registration (username 3-32 chars, EmailStr, password min 8 chars)
 - Internal errors not exposed to clients
+- **Rate-Limiting** via slowapi:
+  - `/api/auth/login`: 5 Requests/Minute
+  - `/api/auth/register`: 3 Requests/Minute
+  - `/api/conversations/{id}/message`: 10 Requests/Minute
+  - `/api/conversations/{id}/message/stream`: 10 Requests/Minute
 
 ### Frontend Structure (`frontend/src/`)
 
@@ -103,10 +108,12 @@ XQT5 5AIs is a 3-stage deliberation system where multiple LLMs collaboratively a
 | Variable | Beschreibung | Pflicht |
 |----------|--------------|---------|
 | `OPENROUTER_API_KEY` | API-Key für OpenRouter | Ja |
-| `JWT_SECRET` | Secret für JWT-Token | Ja (Production) |
+| `JWT_SECRET` | Secret für JWT-Token (min. 32 Zeichen empfohlen) | **Ja** |
 | `admin_user` | Admin-Benutzername | Ja |
 | `admin_pw` | Admin-Passwort | Ja |
 | `CORS_ORIGINS` | Erlaubte Origins (kommasepariert) | Nein (Default: localhost) |
+
+**Wichtig**: `JWT_SECRET` ist seit version02 **Pflicht**. Das Backend startet nicht ohne diese Variable und wirft einen `RuntimeError`.
 
 ### Frontend
 
@@ -156,6 +163,7 @@ All backend modules use relative imports (e.g., `from .config import ...`). Run 
 ### Dependencies
 - `pydantic[email]` - Required for EmailStr validation
 - `passlib[bcrypt]` - Required for password hashing
+- `slowapi` - Required for rate limiting
 
 ## Common Gotchas
 
@@ -163,6 +171,8 @@ All backend modules use relative imports (e.g., `from .config import ...`). Run 
 2. **CORS Issues**: Set `CORS_ORIGINS` environment variable for production
 3. **Email Validation Error**: Ensure `pydantic[email]` is installed
 4. **Password Hashing**: Old SHA-256 hashes are incompatible with bcrypt
+5. **JWT_SECRET fehlt**: Backend startet nicht ohne `JWT_SECRET` - generiere mit `openssl rand -base64 32`
+6. **slowapi Request-Parameter**: Bei Rate-Limited Endpoints muss der erste Parameter `request: Request` heißen, Pydantic-Body als `body: ModelName`
 
 ## Data Flow Summary
 
