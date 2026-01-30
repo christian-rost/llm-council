@@ -157,13 +157,13 @@ async def upload_pdf(
 
 @app.post("/api/auth/register")
 @limiter.limit("3/minute")
-async def register(request_obj: Request, request: RegisterRequest):
+async def register(request: Request, body: RegisterRequest):
     """Register a new user."""
     try:
         user = user_storage.create_user(
-            username=request.username,
-            email=request.email,
-            password=request.password
+            username=body.username,
+            email=body.email,
+            password=body.password
         )
         access_token = auth.create_access_token(user["id"])
         return {
@@ -182,15 +182,15 @@ async def register(request_obj: Request, request: RegisterRequest):
 
 @app.post("/api/auth/login")
 @limiter.limit("5/minute")
-async def login(request_obj: Request, request: LoginRequest):
+async def login(request: Request, body: LoginRequest):
     """Login and get access token."""
     # Check if it's the admin user
     from .config import ADMIN_USERNAME, ADMIN_PASSWORD
-    
+
     # Check admin login first (only if admin is configured)
     if ADMIN_USERNAME and ADMIN_PASSWORD:
-        if request.username == ADMIN_USERNAME:
-            if request.password == ADMIN_PASSWORD:
+        if body.username == ADMIN_USERNAME:
+            if body.password == ADMIN_PASSWORD:
                 access_token = auth.create_access_token("admin")
                 return {
                     "access_token": access_token,
@@ -207,11 +207,11 @@ async def login(request_obj: Request, request: LoginRequest):
                 raise HTTPException(status_code=401, detail="Invalid username or password")
     
     # Regular user login
-    user = user_storage.get_user_by_username(request.username)
+    user = user_storage.get_user_by_username(body.username)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid username or password")
-    
-    if not user_storage.verify_password(user, request.password):
+
+    if not user_storage.verify_password(user, body.password):
         raise HTTPException(status_code=401, detail="Invalid username or password")
     
     if not user.get("is_active", True):
@@ -306,9 +306,9 @@ async def delete_conversation(
 @app.post("/api/conversations/{conversation_id}/message")
 @limiter.limit("10/minute")
 async def send_message(
-    request_obj: Request,
+    request: Request,
     conversation_id: str,
-    request: SendMessageRequest,
+    body: SendMessageRequest,
     current_user: dict = Depends(auth.get_current_user)
 ):
     """
@@ -319,7 +319,7 @@ async def send_message(
     conversation = storage.get_conversation(conversation_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    
+
     # Admin can send messages to any conversation
     if not auth.is_admin_user(current_user):
         # Check if user owns this conversation
@@ -330,18 +330,18 @@ async def send_message(
     is_first_message = len(conversation["messages"]) == 0
 
     # Add user message
-    storage.add_user_message(conversation_id, request.content)
+    storage.add_user_message(conversation_id, body.content)
 
     # If this is the first message, generate a title
     if is_first_message:
-        title = await generate_conversation_title(request.content)
+        title = await generate_conversation_title(body.content)
         storage.update_conversation_title(conversation_id, title)
 
     # Run the 3-stage council process (with optional PDF)
     stage1_results, stage2_results, stage3_result, metadata = await run_full_council(
-        request.content,
-        pdf_data=request.pdf_data,
-        pdf_filename=request.pdf_filename
+        body.content,
+        pdf_data=body.pdf_data,
+        pdf_filename=body.pdf_filename
     )
 
     # Add assistant message with all stages
@@ -365,9 +365,9 @@ async def send_message(
 @app.post("/api/conversations/{conversation_id}/message/stream")
 @limiter.limit("10/minute")
 async def send_message_stream(
-    request_obj: Request,
+    request: Request,
     conversation_id: str,
-    request: SendMessageRequest,
+    body: SendMessageRequest,
     current_user: dict = Depends(auth.get_current_user)
 ):
     """
@@ -378,7 +378,7 @@ async def send_message_stream(
     conversation = storage.get_conversation(conversation_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    
+
     # Admin can send messages to any conversation
     if not auth.is_admin_user(current_user):
         # Check if user owns this conversation
@@ -391,25 +391,25 @@ async def send_message_stream(
     async def event_generator():
         try:
             # Add user message
-            storage.add_user_message(conversation_id, request.content)
+            storage.add_user_message(conversation_id, body.content)
 
             # Start title generation in parallel (don't await yet)
             title_task = None
             if is_first_message:
-                title_task = asyncio.create_task(generate_conversation_title(request.content))
+                title_task = asyncio.create_task(generate_conversation_title(body.content))
 
             # Stage 1: Collect responses (with optional PDF)
             yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
             stage1_results = await stage1_collect_responses(
-                request.content,
-                pdf_data=request.pdf_data,
-                pdf_filename=request.pdf_filename
+                body.content,
+                pdf_data=body.pdf_data,
+                pdf_filename=body.pdf_filename
             )
             yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
 
             # Stage 2: Collect rankings (no PDF needed - working with text responses)
             yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
-            stage2_results, label_to_model = await stage2_collect_rankings(request.content, stage1_results)
+            stage2_results, label_to_model = await stage2_collect_rankings(body.content, stage1_results)
             aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
             metadata = {
                 "label_to_model": label_to_model,
@@ -419,7 +419,7 @@ async def send_message_stream(
 
             # Stage 3: Synthesize final answer (no PDF needed - working with stage results)
             yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
-            stage3_result = await stage3_synthesize_final(request.content, stage1_results, stage2_results)
+            stage3_result = await stage3_synthesize_final(body.content, stage1_results, stage2_results)
             yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result})}\n\n"
 
             # Wait for title generation if it was started
