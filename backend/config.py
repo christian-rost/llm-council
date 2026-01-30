@@ -28,8 +28,10 @@ DATA_DIR = "data/conversations"
 # Data directory for user storage
 USER_DATA_DIR = "data/users"
 
-# JWT Secret (should be in .env in production)
-JWT_SECRET = os.getenv("JWT_SECRET", "your-secret-key-change-in-production")
+# JWT Secret - MUST be set in environment
+JWT_SECRET = os.getenv("JWT_SECRET")
+if not JWT_SECRET:
+    raise RuntimeError("JWT_SECRET environment variable is required. Please set a strong secret key.")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24
 

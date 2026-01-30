@@ -3,7 +3,8 @@
 import json
 import os
 import logging
-from datetime import datetime
+import uuid
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from pathlib import Path
 from passlib.context import CryptContext
@@ -50,14 +51,15 @@ def create_user(username: str, email: str, password: str) -> Dict[str, Any]:
     if get_user_by_email(email):
         raise ValueError(f"Email {email} already exists")
 
-    user_id = str(datetime.utcnow().timestamp()).replace('.', '')
+    user_id = str(uuid.uuid4())
     user = {
         "id": user_id,
         "username": username,
         "email": email,
         "password_hash": hash_password(password),
-        "created_at": datetime.utcnow().isoformat(),
-        "is_active": True
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "is_active": True,
+        "is_admin": False
     }
 
     # Save to file

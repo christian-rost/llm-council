@@ -1,6 +1,6 @@
 [project]
 name = "llm-council"
-version = "0.1.0"
+version = "0.2.0"
 description = "XQT5 5AIs"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -13,4 +13,5 @@ dependencies = [
     "python-multipart>=0.0.6",
     "python-jose[cryptography]>=3.3.0",
     "passlib[bcrypt]>=1.7.4",
+    "slowapi>=0.1.9",
 ]

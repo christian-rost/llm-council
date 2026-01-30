@@ -1,6 +1,6 @@
 """Authentication utilities for JWT tokens."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from jose import JWTError, jwt
 from fastapi import Depends, HTTPException, status
@@ -13,7 +13,7 @@ security = HTTPBearer()
 
 def create_access_token(user_id: str) -> str:
     """Create a JWT access token for a user."""
-    expire = datetime.utcnow() + timedelta(hours=JWT_EXPIRATION_HOURS)
+    expire = datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS)
     to_encode = {"sub": user_id, "exp": expire}
     encoded_jwt = jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
     return encoded_jwt
@@ -32,8 +32,14 @@ def verify_token(token: str) -> Optional[str]:
 
 
 def is_admin_user(user: dict) -> bool:
-    """Check if a user is the admin user."""
-    return user.get("username") == ADMIN_USERNAME and ADMIN_USERNAME != ""
+    """Check if a user is an admin."""
+    # Check explicit is_admin flag (secure method)
+    if user.get("is_admin") is True:
+        return True
+    # Check for special admin user (env-based admin)
+    if user.get("id") == "admin" and ADMIN_USERNAME and ADMIN_PASSWORD:
+        return True
+    return False
 
 
 async def get_current_user(

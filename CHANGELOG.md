@@ -1,5 +1,25 @@
 # XQT5 5AIs - Entwicklungsstand
 
+## Version 0.2.0 (Branch: version02)
+
+### Sicherheits-Fixes
+
+- ✅ **JWT Secret Pflicht**: Wirft RuntimeError wenn `JWT_SECRET` nicht gesetzt
+- ✅ **Admin-Check verbessert**: Verwendet `is_admin`-Flag statt Username-Vergleich
+- ✅ **UUID für User-IDs**: `uuid.uuid4()` statt Timestamp (verhindert Kollisionen)
+- ✅ **Rate-Limiting**: slowapi integriert
+  - Login: 5 Versuche/Minute
+  - Register: 3 Versuche/Minute
+  - Message: 10 Anfragen/Minute
+- ✅ **Health-Endpoint bereinigt**: Keine Admin-Config-Info mehr exponiert
+- ✅ **datetime.utcnow() ersetzt**: Verwendet `datetime.now(timezone.utc)` (nicht mehr deprecated)
+
+### Abhängigkeiten
+
+- Neu: `slowapi>=0.1.9`
+
+---
+
 ## Version 0.1.0 (Branch: version01)
 
 ### Überblick

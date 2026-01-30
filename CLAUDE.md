@@ -4,7 +4,7 @@ This file contains technical details, architectural decisions, and important imp
 
 ## Current State
 
-- **Branch**: `version01` (aktive Entwicklung)
+- **Branch**: `version02` (aktive Entwicklung)
 - **Produktname**: XQT5 5AIs (umbenannt von "LLM Council")
 - **Deployment**: Coolify auf VPS
   - Frontend: https://5ais.xqtfive.com
@@ -114,7 +114,7 @@ XQT5 5AIs is a 3-stage deliberation system where multiple LLMs collaboratively a
 |----------|--------------|---------|
 | `VITE_API_BASE` | Backend-URL | Ja (Production) |
 
-## Security Features (version01)
+## Security Features (version02)
 
 1. **Bcrypt Password Hashing**: Ersetzt SHA-256, nutzt passlib
 2. **Input Validation**: Pydantic validators für Registration
@@ -122,6 +122,10 @@ XQT5 5AIs is a 3-stage deliberation system where multiple LLMs collaboratively a
 4. **Error Handling**: Interne Fehler nicht an Client exponiert
 5. **Logging**: Proper logging statt print statements
 6. **User Isolation**: Benutzer sehen nur eigene Conversations
+7. **JWT Secret Pflicht**: RuntimeError wenn `JWT_SECRET` nicht gesetzt
+8. **Sichere Admin-Prüfung**: `is_admin`-Flag statt Username-Vergleich
+9. **UUID User-IDs**: Keine Timestamp-Kollisionen mehr möglich
+10. **Rate-Limiting**: slowapi für Brute-Force- und DoS-Schutz
 
 ## Key Design Decisions
 
@@ -207,7 +211,7 @@ llm-council/
 
 ## Nächste Schritte
 
-- [ ] Rate Limiting implementieren
+- [x] Rate Limiting implementieren
 - [ ] Passwort-Zurücksetzen per E-Mail
 - [ ] Token-Refresh-Mechanismus
 - [ ] Unit Tests

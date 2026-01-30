@@ -8,18 +8,25 @@ import json
 import asyncio
 import base64
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Depends
+from fastapi import FastAPI, HTTPException, UploadFile, File, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, field_validator, EmailStr
 from typing import List, Dict, Any, Optional
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from . import storage, user_storage, auth
 from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
 
 logger = logging.getLogger(__name__)
 
+# Rate limiter setup
+limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="XQT5 5AIs API")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS origins from environment variable (comma-separated) or defaults
 DEFAULT_CORS_ORIGINS = "http://localhost:5173,http://localhost:3000"
@@ -108,13 +115,9 @@ class ResetPasswordRequest(BaseModel):
 @app.get("/")
 async def root():
     """Health check endpoint."""
-    from .config import ADMIN_USERNAME, ADMIN_PASSWORD
     return {
         "status": "ok",
-        "service": "XQT5 5AIs API",
-        "admin_configured": bool(ADMIN_USERNAME and ADMIN_PASSWORD),
-        "admin_username_set": bool(ADMIN_USERNAME),
-        "admin_password_set": bool(ADMIN_PASSWORD)
+        "service": "XQT5 5AIs API"
     }
 
 
@@ -153,7 +156,8 @@ async def upload_pdf(
 
 
 @app.post("/api/auth/register")
-async def register(request: RegisterRequest):
+@limiter.limit("3/minute")
+async def register(request_obj: Request, request: RegisterRequest):
     """Register a new user."""
     try:
         user = user_storage.create_user(
@@ -177,7 +181,8 @@ async def register(request: RegisterRequest):
 
 
 @app.post("/api/auth/login")
-async def login(request: LoginRequest):
+@limiter.limit("5/minute")
+async def login(request_obj: Request, request: LoginRequest):
     """Login and get access token."""
     # Check if it's the admin user
     from .config import ADMIN_USERNAME, ADMIN_PASSWORD
@@ -299,7 +304,9 @@ async def delete_conversation(
 
 
 @app.post("/api/conversations/{conversation_id}/message")
+@limiter.limit("10/minute")
 async def send_message(
+    request_obj: Request,
     conversation_id: str,
     request: SendMessageRequest,
     current_user: dict = Depends(auth.get_current_user)
@@ -356,7 +363,9 @@ async def send_message(
 
 
 @app.post("/api/conversations/{conversation_id}/message/stream")
+@limiter.limit("10/minute")
 async def send_message_stream(
+    request_obj: Request,
     conversation_id: str,
     request: SendMessageRequest,
     current_user: dict = Depends(auth.get_current_user)
