@@ -55,12 +55,14 @@ XQT5AIs is a 3-stage deliberation system where multiple LLMs collaboratively ans
 - Graceful degradation: returns None on failure, continues with successful responses
 
 **`council.py`** - The Core Logic
-- `stage1_collect_responses()`: Parallel queries to all council models
-- `stage2_collect_rankings()`: Anonymized peer rankings
+- `stage1_collect_responses()`: Parallel queries to all council models → returns `(results, failed_models)`
+- `stage2_collect_rankings()`: Anonymized peer rankings → returns `(results, label_to_model, failed_models)`
 - `stage3_synthesize_final()`: Chairman synthesizes final answer
 - `parse_ranking_from_text()`: Extracts "FINAL RANKING:" section
 - `calculate_aggregate_rankings()`: Computes average rank position
+- `run_full_council()`: Orchestrates all 3 stages, includes `stage1_failed` + `stage2_failed` in metadata
 - **Dynamic models**: Uses `settings.get_council_models()` and `settings.get_chairman_model()` instead of hardcoded config
+- **Failed model tracking**: Models that fail (timeout, API error, invalid ID) are tracked and returned separately instead of being silently dropped
 
 **`storage.py`**
 - **Supabase-based** conversation storage in `conversations` + `messages` tables
@@ -89,6 +91,7 @@ XQT5AIs is a 3-stage deliberation system where multiple LLMs collaboratively ans
 - PDF upload support
 - **View toggle**: `chat` / `admin` (admin-only)
 - Admin button in sidebar for `is_admin` users
+- **Failed models UI**: `failedModels` state tracks Stage 1/2 failures; renders warning banners + greyed-out tabs
 
 **`auth.jsx`**
 - Authentication context provider
@@ -97,6 +100,7 @@ XQT5AIs is a 3-stage deliberation system where multiple LLMs collaboratively ans
 
 **`api.js`**
 - API client with auth headers
+- `sendMessageStream()`: SSE streaming with callbacks — `onStage1(data, failedModels)`, `onStage2(data, metadata)`
 - Admin methods: `getAdminSettings()`, `updateAdminSettings()`, `getAdminUsers()`, `deleteAdminUser()`
 
 **`components/Login.jsx`**
@@ -196,6 +200,8 @@ Schema file: `backend/schema.sql` (run in Supabase SQL Editor)
 - Continue with successful responses if some models fail
 - Never fail the entire request due to single model failure
 - Log errors internally, show generic messages to users
+- **Failed models are transparent**: Users see a warning banner ("X of Y models failed") and greyed-out tabs for failed models in Stage 1/2
+- Failed model lists stored in `metadata.stage1_failed` / `metadata.stage2_failed` (JSONB, no schema change needed)
 
 ## Important Implementation Details
 
@@ -224,17 +230,17 @@ All backend modules use relative imports (e.g., `from .config import ...`). Run 
 ```
 User Query
     ↓
-Stage 1: Parallel queries → [individual responses]
+Stage 1: Parallel queries → [individual responses] + [failed_models]
     ↓
-Stage 2: Anonymize → Parallel ranking queries → [evaluations + parsed rankings]
+Stage 2: Anonymize → Parallel ranking queries → [evaluations + parsed rankings] + [failed_models]
     ↓
 Aggregate Rankings Calculation → [sorted by avg position]
     ↓
 Stage 3: Chairman synthesis with full context
     ↓
-Return: {stage1, stage2, stage3, metadata}
+Return: {stage1, stage2, stage3, metadata (incl. stage1_failed, stage2_failed)}
     ↓
-Frontend: Display with tabs + validation UI
+Frontend: Display with tabs + warning banners for failed models
 ```
 
 ## Files Overview
@@ -275,6 +281,7 @@ llm-council/
 - [x] Rate Limiting
 - [x] Migration to database (Supabase)
 - [x] Admin UI for model configuration
+- [x] Failed models transparency (warning banners + greyed-out tabs)
 - [ ] Password reset via email
 - [ ] Token refresh mechanism
 - [ ] Unit Tests

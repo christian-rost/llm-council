@@ -1,5 +1,30 @@
 # XQT5AIs - Entwicklungsstand
 
+## Version 1.0.0 (Branch: version1)
+
+### Datenbank-Migration
+- ✅ **Supabase statt JSON-Dateien**: Conversations, Messages, Users und App Settings in Supabase
+- ✅ **Schema**: `users`, `conversations`, `messages`, `app_settings` Tabellen
+- ✅ **User-Isolation**: Users sehen nur eigene Conversations (+ RLS konfigurierbar)
+- ✅ **CASCADE Delete**: Messages werden automatisch mit Conversation gelöscht
+
+### Admin Dashboard
+- ✅ **Model-Konfiguration**: Chairman + Council Models über UI konfigurierbar
+- ✅ **Council Models Limit**: Maximum 9 Modelle erlaubt (Backend-Validierung + Frontend)
+- ✅ **User Management**: Benutzer-Tabelle mit Lösch-Funktion
+- ✅ **Einstellungen sofort wirksam**: Kein Neustart nötig, Fallback auf config.py Defaults
+
+### Failed Models Transparenz
+- ✅ **Warning-Banner**: Zeigt "X of Y models failed" mit Modellnamen bei Stage 1/2
+- ✅ **Greyed-out Tabs**: Fehlgeschlagene Modelle als durchgestrichene, nicht-klickbare Tabs
+- ✅ **Persistenz**: `stage1_failed` + `stage2_failed` im bestehenden `metadata` JSONB-Feld gespeichert
+- ✅ **Streaming + Loaded Messages**: Banner + Tabs in beiden Ansichten (live + aus DB geladen)
+
+### Abhängigkeiten
+- Neu: `supabase` (Datenbank-Client)
+
+---
+
 ## Version 0.2.0 (Branch: version02)
 
 ### Sicherheits-Fixes
@@ -106,13 +131,15 @@ Das Projekt wird über Coolify auf einem VPS deployed:
 
 - ~~Keine Rate-Limiting-Implementierung~~ → Behoben in version02
 - Keine Passwort-Zurücksetzen-Funktion für Benutzer (nur Admin)
-- Metadaten werden nicht persistent gespeichert
+- ~~Metadaten werden nicht persistent gespeichert~~ → Behoben in version1 (Supabase)
 - Kein automatisches Token-Refresh
 
 ### Nächste Schritte
 
 - [x] Rate Limiting implementieren (version02)
+- [x] Datenbank statt JSON-Dateien (version1 — Supabase)
+- [x] Admin UI für Model-Konfiguration (version1)
+- [x] Failed Models Transparenz (version1)
 - [ ] Passwort-Zurücksetzen per E-Mail
 - [ ] Token-Refresh-Mechanismus
 - [ ] Unit Tests hinzufügen
-- [ ] Datenbank statt JSON-Dateien
