@@ -117,6 +117,13 @@ class UpdateSettingsRequest(BaseModel):
     chairman_model: Optional[str] = None
     council_models: Optional[List[str]] = None
 
+    @field_validator('council_models')
+    @classmethod
+    def validate_council_models(cls, v):
+        if v is not None and len(v) > 9:
+            raise ValueError('Maximum 9 council models allowed')
+        return v
+
 
 @app.get("/")
 async def root():

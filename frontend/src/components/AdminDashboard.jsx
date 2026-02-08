@@ -54,9 +54,15 @@ function AdminDashboard() {
     }
   };
 
+  const MAX_COUNCIL_MODELS = 9;
+
   const addCouncilModel = () => {
     const trimmed = newModel.trim();
     if (!trimmed) return;
+    if (councilModels.length >= MAX_COUNCIL_MODELS) {
+      setMessage({ type: 'error', text: `Maximum ${MAX_COUNCIL_MODELS} council models allowed` });
+      return;
+    }
     if (councilModels.includes(trimmed)) {
       setMessage({ type: 'error', text: 'Model already in the list' });
       return;
@@ -163,11 +169,17 @@ function AdminDashboard() {
                 onChange={(e) => setNewModel(e.target.value)}
                 onKeyPress={handleNewModelKeyPress}
                 placeholder="e.g. openai/gpt-5.1"
+                disabled={councilModels.length >= MAX_COUNCIL_MODELS}
               />
-              <button className="add-model-btn" onClick={addCouncilModel}>
+              <button
+                className="add-model-btn"
+                onClick={addCouncilModel}
+                disabled={councilModels.length >= MAX_COUNCIL_MODELS}
+              >
                 Add
               </button>
             </div>
+            <p className="admin-hint">{councilModels.length}/{MAX_COUNCIL_MODELS} Models</p>
           </div>
 
           <button
