@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import { api } from './api';
 import { useAuth } from './auth';
 import Login from './components/Login';
+import AdminDashboard from './components/AdminDashboard';
 import './App.css';
 
 function App() {
@@ -17,6 +18,7 @@ function App() {
   const [metadata, setMetadata] = useState(null);
   const [activeTab, setActiveTab] = useState(0);
   const [currentStage, setCurrentStage] = useState(null);
+  const [view, setView] = useState('chat');
   const [uploadingPdf, setUploadingPdf] = useState(false);
   const [pdfData, setPdfData] = useState(null);
   const [pdfFilename, setPdfFilename] = useState(null);
@@ -481,6 +483,14 @@ function App() {
         <div style={{ fontSize: '12px', color: '#888', marginBottom: '16px', paddingBottom: '16px', borderBottom: '1px solid #444' }}>
           {user.username}
         </div>
+        {user?.is_admin && (
+          <button
+            className={`admin-toggle-btn ${view === 'admin' ? 'active' : ''}`}
+            onClick={() => setView(view === 'admin' ? 'chat' : 'admin')}
+          >
+            {view === 'admin' ? 'Back to Chat' : 'Admin'}
+          </button>
+        )}
         <button className="new-chat-btn" onClick={createNewConversation}>
           + New Conversation
         </button>
@@ -510,7 +520,9 @@ function App() {
       </aside>
 
       <main className="chat-area">
-        {!currentConversation ? (
+        {view === 'admin' ? (
+          <AdminDashboard />
+        ) : !currentConversation ? (
           <div className="welcome">
             <h2>Welcome to XQT5 5AIs</h2>
             <p>Create a new conversation to get started</p>

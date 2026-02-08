@@ -35,6 +35,12 @@ if not JWT_SECRET:
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24
 
+# Supabase configuration
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise RuntimeError("SUPABASE_URL and SUPABASE_KEY environment variables are required.")
+
 # Admin credentials from environment variables
 ADMIN_USERNAME = os.getenv("admin_user", "")
 ADMIN_PASSWORD = os.getenv("admin_pw", "")

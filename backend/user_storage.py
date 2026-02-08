@@ -1,14 +1,9 @@
-"""JSON-based storage for users."""
+"""Supabase-based storage for users."""
 
-import json
-import os
 import logging
-import uuid
-from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
-from pathlib import Path
 from passlib.context import CryptContext
-from .config import USER_DATA_DIR
+from .database import supabase
 
 logger = logging.getLogger(__name__)
 
@@ -16,119 +11,9 @@ logger = logging.getLogger(__name__)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
-def ensure_user_dir():
-    """Ensure the user data directory exists."""
-    Path(USER_DATA_DIR).mkdir(parents=True, exist_ok=True)
-
-
-def get_user_path(user_id: str) -> str:
-    """Get the file path for a user."""
-    return os.path.join(USER_DATA_DIR, f"{user_id}.json")
-
-
 def hash_password(password: str) -> str:
     """Hash a password using bcrypt."""
     return pwd_context.hash(password)
-
-
-def create_user(username: str, email: str, password: str) -> Dict[str, Any]:
-    """
-    Create a new user.
-
-    Args:
-        username: Username
-        email: Email address
-        password: Plain text password (will be hashed)
-
-    Returns:
-        New user dict
-    """
-    ensure_user_dir()
-
-    # Check if username or email already exists
-    if get_user_by_username(username):
-        raise ValueError(f"Username {username} already exists")
-    if get_user_by_email(email):
-        raise ValueError(f"Email {email} already exists")
-
-    user_id = str(uuid.uuid4())
-    user = {
-        "id": user_id,
-        "username": username,
-        "email": email,
-        "password_hash": hash_password(password),
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "is_active": True,
-        "is_admin": False
-    }
-
-    # Save to file
-    path = get_user_path(user_id)
-    with open(path, 'w') as f:
-        json.dump(user, f, indent=2)
-
-    return user
-
-
-def get_user(user_id: str) -> Optional[Dict[str, Any]]:
-    """
-    Load a user from storage.
-
-    Args:
-        user_id: Unique identifier for the user
-
-    Returns:
-        User dict or None if not found
-    """
-    path = get_user_path(user_id)
-
-    if not os.path.exists(path):
-        return None
-
-    with open(path, 'r') as f:
-        return json.load(f)
-
-
-def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
-    """Get a user by username."""
-    ensure_user_dir()
-
-    if not os.path.exists(USER_DATA_DIR):
-        return None
-
-    for filename in os.listdir(USER_DATA_DIR):
-        if filename.endswith('.json'):
-            path = os.path.join(USER_DATA_DIR, filename)
-            try:
-                with open(path, 'r') as f:
-                    user = json.load(f)
-                    if user.get("username") == username:
-                        return user
-            except (json.JSONDecodeError, IOError) as e:
-                logger.warning(f"Error reading user file {path}: {e}")
-                continue
-    return None
-
-
-def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
-    """Get a user by email."""
-    ensure_user_dir()
-
-    if not os.path.exists(USER_DATA_DIR):
-        return None
-
-    for filename in os.listdir(USER_DATA_DIR):
-        if filename.endswith('.json'):
-            path = os.path.join(USER_DATA_DIR, filename)
-            try:
-                with open(path, 'r') as f:
-                    user = json.load(f)
-                    if user.get("email") == email:
-                        return user
-            except (json.JSONDecodeError, IOError) as e:
-                logger.warning(f"Error reading user file {path}: {e}")
-                continue
-    return None
 
 
 def verify_password(user: Dict[str, Any], password: str) -> bool:
@@ -137,58 +22,73 @@ def verify_password(user: Dict[str, Any], password: str) -> bool:
     return pwd_context.verify(password, stored_hash)
 
 
+def create_user(username: str, email: str, password: str) -> Dict[str, Any]:
+    """Create a new user."""
+    # Check if username or email already exists
+    if get_user_by_username(username):
+        raise ValueError(f"Username {username} already exists")
+    if get_user_by_email(email):
+        raise ValueError(f"Email {email} already exists")
+
+    user_data = {
+        "username": username,
+        "email": email,
+        "password_hash": hash_password(password),
+        "is_active": True,
+        "is_admin": False,
+    }
+
+    result = supabase.table("users").insert(user_data).execute()
+    return result.data[0]
+
+
+def get_user(user_id: str) -> Optional[Dict[str, Any]]:
+    """Load a user by ID."""
+    result = supabase.table("users").select("*").eq("id", user_id).execute()
+    if result.data:
+        return result.data[0]
+    return None
+
+
+def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
+    """Get a user by username."""
+    result = supabase.table("users").select("*").eq("username", username).execute()
+    if result.data:
+        return result.data[0]
+    return None
+
+
+def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
+    """Get a user by email."""
+    result = supabase.table("users").select("*").eq("email", email).execute()
+    if result.data:
+        return result.data[0]
+    return None
+
+
 def list_all_users() -> List[Dict[str, Any]]:
-    """List all users (for admin)."""
-    ensure_user_dir()
-    
-    if not os.path.exists(USER_DATA_DIR):
-        return []
-    
-    users = []
-    for filename in os.listdir(USER_DATA_DIR):
-        if filename.endswith('.json'):
-            path = os.path.join(USER_DATA_DIR, filename)
-            try:
-                with open(path, 'r') as f:
-                    user = json.load(f)
-                    # Don't include password hash
-                    users.append({
-                        "id": user.get("id"),
-                        "username": user.get("username"),
-                        "email": user.get("email"),
-                        "created_at": user.get("created_at"),
-                        "is_active": user.get("is_active", True)
-                    })
-            except (json.JSONDecodeError, IOError):
-                # Skip corrupted files
-                continue
-    
-    # Sort by creation time, newest first
-    users.sort(key=lambda x: x.get("created_at", ""), reverse=True)
-    return users
+    """List all users (for admin). Does not include password hash."""
+    result = (
+        supabase.table("users")
+        .select("id,username,email,created_at,is_active")
+        .order("created_at", desc=True)
+        .execute()
+    )
+    return result.data
 
 
 def delete_user(user_id: str) -> bool:
     """Delete a user."""
-    path = get_user_path(user_id)
-    
-    if not os.path.exists(path):
-        return False
-    
-    os.remove(path)
-    return True
+    result = supabase.table("users").delete().eq("id", user_id).execute()
+    return len(result.data) > 0
 
 
 def reset_user_password(user_id: str, new_password: str) -> bool:
     """Reset a user's password."""
-    user = get_user(user_id)
-    if user is None:
-        return False
-    
-    user["password_hash"] = hash_password(new_password)
-    path = get_user_path(user_id)
-    with open(path, 'w') as f:
-        json.dump(user, f, indent=2)
-    
-    return True
-
+    result = (
+        supabase.table("users")
+        .update({"password_hash": hash_password(new_password)})
+        .eq("id", user_id)
+        .execute()
+    )
+    return len(result.data) > 0

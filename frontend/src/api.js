@@ -268,4 +268,51 @@ export const api = {
 
     return response.json();
   },
+
+  /**
+   * Admin: Get current settings
+   */
+  async getAdminSettings() {
+    const response = await fetch(`${API_BASE}/api/admin/settings`, {
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to fetch admin settings');
+    return response.json();
+  },
+
+  /**
+   * Admin: Update settings
+   */
+  async updateAdminSettings(settingsData) {
+    const response = await fetch(`${API_BASE}/api/admin/settings`, {
+      method: 'PUT',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(settingsData),
+    });
+    if (!response.ok) throw new Error('Failed to update settings');
+    return response.json();
+  },
+
+  /**
+   * Admin: Get all users
+   */
+  async getAdminUsers() {
+    const response = await fetch(`${API_BASE}/api/admin/users`, {
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to fetch users');
+    return response.json();
+  },
+
+  /**
+   * Admin: Delete a user
+   */
+  async deleteAdminUser(userId) {
+    const response = await fetch(`${API_BASE}/api/admin/users/${userId}`, {
+      method: 'DELETE',
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to delete user');
+    return response.json();
+  },
 };

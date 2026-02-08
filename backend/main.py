@@ -17,7 +17,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
-from . import storage, user_storage, auth
+from . import storage, user_storage, auth, settings
 from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
 
 logger = logging.getLogger(__name__)
@@ -110,6 +110,12 @@ class TokenResponse(BaseModel):
 class ResetPasswordRequest(BaseModel):
     """Request to reset a user's password."""
     new_password: str
+
+
+class UpdateSettingsRequest(BaseModel):
+    """Request to update admin settings."""
+    chairman_model: Optional[str] = None
+    council_models: Optional[List[str]] = None
 
 
 @app.get("/")
@@ -512,6 +518,28 @@ async def reset_user_password_endpoint(
     if not success:
         raise HTTPException(status_code=404, detail="User not found")
     return {"status": "password_reset"}
+
+
+@app.get("/api/admin/settings")
+async def get_admin_settings(admin: dict = Depends(auth.get_current_admin)):
+    """Get current admin settings (admin only)."""
+    return {
+        "chairman_model": settings.get_chairman_model(),
+        "council_models": settings.get_council_models(),
+    }
+
+
+@app.put("/api/admin/settings")
+async def update_admin_settings(
+    body: UpdateSettingsRequest,
+    admin: dict = Depends(auth.get_current_admin),
+):
+    """Update admin settings (admin only)."""
+    if body.chairman_model is not None:
+        settings.set_setting("chairman_model", body.chairman_model)
+    if body.council_models is not None:
+        settings.set_setting("council_models", body.council_models)
+    return {"status": "updated"}
 
 
 if __name__ == "__main__":

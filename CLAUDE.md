@@ -4,11 +4,12 @@ This file contains technical details, architectural decisions, and important imp
 
 ## Current State
 
-- **Branch**: `version02` (aktive Entwicklung)
+- **Branch**: `version1` (aktive Entwicklung)
 - **Produktname**: XQT5 5AIs (umbenannt von "LLM Council")
 - **Deployment**: Coolify auf VPS
   - Frontend: https://5ais.xqtfive.com
   - Backend: Separate Instanz
+- **Datenbank**: Supabase (ersetzt JSON-Dateien seit version1)
 
 ## Project Overview
 
@@ -19,18 +20,27 @@ XQT5 5AIs is a 3-stage deliberation system where multiple LLMs collaboratively a
 ### Backend Structure (`backend/`)
 
 **`config.py`**
-- Contains `COUNCIL_MODELS` (list of OpenRouter model identifiers)
-- Contains `CHAIRMAN_MODEL` (model that synthesizes final answer)
-- Uses environment variable `OPENROUTER_API_KEY` from `.env`
+- Contains `COUNCIL_MODELS` and `CHAIRMAN_MODEL` as fallback defaults
+- Uses environment variables: `OPENROUTER_API_KEY`, `SUPABASE_URL`, `SUPABASE_KEY`
 - Backend runs on **port 8001**
 - JWT configuration: `JWT_SECRET`, `JWT_ALGORITHM`, `JWT_EXPIRATION_HOURS`
 - Admin credentials: `admin_user`, `admin_pw` (environment variables)
+- RuntimeError if `JWT_SECRET`, `SUPABASE_URL`, or `SUPABASE_KEY` are missing
+
+**`database.py`**
+- Supabase client singleton: `create_client(SUPABASE_URL, SUPABASE_KEY)`
+- Imported by all modules that need DB access
+
+**`settings.py`**
+- App settings stored in `app_settings` table (key-value, JSONB)
+- `get_setting(key, default)` / `set_setting(key, value)` (upsert)
+- `get_chairman_model()` / `get_council_models()` with config.py fallbacks
 
 **`user_storage.py`**
-- JSON-based user storage in `data/users/`
+- **Supabase-based** user storage in `users` table
 - **Bcrypt password hashing** via passlib (NOT SHA-256)
 - User CRUD operations with error handling
-- Functions: `create_user()`, `get_user_by_username()`, `get_user_by_email()`, `verify_password()`
+- Functions: `create_user()`, `get_user()`, `get_user_by_username()`, `get_user_by_email()`, `verify_password()`, `list_all_users()`, `delete_user()`, `reset_user_password()`
 
 **`auth.py`**
 - JWT token creation and validation
@@ -50,10 +60,11 @@ XQT5 5AIs is a 3-stage deliberation system where multiple LLMs collaboratively a
 - `stage3_synthesize_final()`: Chairman synthesizes final answer
 - `parse_ranking_from_text()`: Extracts "FINAL RANKING:" section
 - `calculate_aggregate_rankings()`: Computes average rank position
+- **Dynamic models**: Uses `settings.get_council_models()` and `settings.get_chairman_model()` instead of hardcoded config
 
 **`storage.py`**
-- JSON-based conversation storage in `data/conversations/`
-- Each conversation: `{id, user_id, created_at, title, messages[]}`
+- **Supabase-based** conversation storage in `conversations` + `messages` tables
+- Messages stored separately with foreign key to conversation (CASCADE delete)
 - User isolation: Users can only see their own conversations
 
 **`main.py`**
@@ -61,6 +72,7 @@ XQT5 5AIs is a 3-stage deliberation system where multiple LLMs collaboratively a
 - **CORS origins configurable via `CORS_ORIGINS` environment variable**
 - Authentication endpoints: `/api/auth/register`, `/api/auth/login`, `/api/auth/me`
 - Admin endpoints: `/api/admin/users`, `/api/admin/users/{id}`, etc.
+- **Admin settings endpoints**: `/api/admin/settings` (GET/PUT)
 - Input validation on registration (username 3-32 chars, EmailStr, password min 8 chars)
 - Internal errors not exposed to clients
 - **Rate-Limiting** via slowapi:
@@ -75,31 +87,52 @@ XQT5 5AIs is a 3-stage deliberation system where multiple LLMs collaboratively a
 - Main orchestration: manages conversations list and current conversation
 - Handles authentication state
 - PDF upload support
+- **View toggle**: `chat` / `admin` (admin-only)
+- Admin button in sidebar for `is_admin` users
 
 **`auth.jsx`**
 - Authentication context provider
 - Token management in localStorage
 - Login/logout/register functions
 
+**`api.js`**
+- API client with auth headers
+- Admin methods: `getAdminSettings()`, `updateAdminSettings()`, `getAdminUsers()`, `deleteAdminUser()`
+
 **`components/Login.jsx`**
 - Login and registration forms
 - Tab-based UI for switching between login/register
 
-**`components/ChatInterface.jsx`**
-- Multiline textarea (3 rows, resizable)
-- Enter to send, Shift+Enter for new line
-
-**`components/Stage1.jsx`**, **`Stage2.jsx`**, **`Stage3.jsx`**
-- Tab views for individual model responses
-- ReactMarkdown rendering
+**`components/AdminDashboard.jsx`**
+- **Model Configuration**: Chairman/Moderator input, Council models list with add/remove
+- **User Management**: User table with delete functionality
+- Tab-based section switching
 
 **Styling (`*.css`)**
 - **XQT5 Corporate Design**:
   - Primary color: `#ee7f00` (Orange)
   - Dark color: `#213452` (Navy-Blau)
   - White: `#ffffff`
-- CSS Variables in `index.css` für konsistentes Theming
+- CSS Variables in `index.css` for consistent theming
 - Light mode theme
+
+## Database Schema (Supabase)
+
+```sql
+-- Users table
+users (id UUID PK, username, email, password_hash, is_active, is_admin, created_at)
+
+-- Conversations table
+conversations (id UUID PK, user_id FK→users, title, created_at)
+
+-- Messages table (user + assistant messages)
+messages (id UUID PK, conversation_id FK→conversations, role, content, stage1 JSONB, stage2 JSONB, stage3 JSONB, metadata JSONB, created_at)
+
+-- App Settings (key-value)
+app_settings (key VARCHAR PK, value JSONB, updated_at)
+```
+
+Schema file: `backend/schema.sql` (run in Supabase SQL Editor)
 
 ## Environment Variables
 
@@ -107,13 +140,15 @@ XQT5 5AIs is a 3-stage deliberation system where multiple LLMs collaboratively a
 
 | Variable | Beschreibung | Pflicht |
 |----------|--------------|---------|
-| `OPENROUTER_API_KEY` | API-Key für OpenRouter | Ja |
-| `JWT_SECRET` | Secret für JWT-Token (min. 32 Zeichen empfohlen) | **Ja** |
-| `admin_user` | Admin-Benutzername | Ja |
-| `admin_pw` | Admin-Passwort | Ja |
-| `CORS_ORIGINS` | Erlaubte Origins (kommasepariert) | Nein (Default: localhost) |
+| `OPENROUTER_API_KEY` | API-Key for OpenRouter | Ja |
+| `JWT_SECRET` | Secret for JWT tokens (min. 32 chars recommended) | **Ja** |
+| `SUPABASE_URL` | Supabase project URL | **Ja** |
+| `SUPABASE_KEY` | Supabase service_role key | **Ja** |
+| `admin_user` | Admin username | Ja |
+| `admin_pw` | Admin password | Ja |
+| `CORS_ORIGINS` | Allowed origins (comma-separated) | Nein (Default: localhost) |
 
-**Wichtig**: `JWT_SECRET` ist seit version02 **Pflicht**. Das Backend startet nicht ohne diese Variable und wirft einen `RuntimeError`.
+**Important**: `JWT_SECRET`, `SUPABASE_URL`, and `SUPABASE_KEY` are **required**. Backend will not start without them (RuntimeError).
 
 ### Frontend
 
@@ -121,18 +156,19 @@ XQT5 5AIs is a 3-stage deliberation system where multiple LLMs collaboratively a
 |----------|--------------|---------|
 | `VITE_API_BASE` | Backend-URL | Ja (Production) |
 
-## Security Features (version02)
+## Security Features
 
-1. **Bcrypt Password Hashing**: Ersetzt SHA-256, nutzt passlib
-2. **Input Validation**: Pydantic validators für Registration
-3. **CORS Restriction**: Nur spezifische Methods/Headers erlaubt
-4. **Error Handling**: Interne Fehler nicht an Client exponiert
-5. **Logging**: Proper logging statt print statements
-6. **User Isolation**: Benutzer sehen nur eigene Conversations
-7. **JWT Secret Pflicht**: RuntimeError wenn `JWT_SECRET` nicht gesetzt
-8. **Sichere Admin-Prüfung**: `is_admin`-Flag statt Username-Vergleich
-9. **UUID User-IDs**: Keine Timestamp-Kollisionen mehr möglich
-10. **Rate-Limiting**: slowapi für Brute-Force- und DoS-Schutz
+1. **Bcrypt Password Hashing**: via passlib
+2. **Input Validation**: Pydantic validators for registration
+3. **CORS Restriction**: Only specific methods/headers allowed
+4. **Error Handling**: Internal errors not exposed to clients
+5. **Logging**: Proper logging instead of print statements
+6. **User Isolation**: Users can only see their own conversations
+7. **JWT Secret Required**: RuntimeError if `JWT_SECRET` not set
+8. **Secure Admin Check**: `is_admin` flag instead of username comparison
+9. **UUID User-IDs**: No timestamp collisions
+10. **Rate-Limiting**: slowapi for brute-force and DoS protection
+11. **Supabase RLS**: Database-level security (configurable in Supabase dashboard)
 
 ## Key Design Decisions
 
@@ -150,6 +186,12 @@ XQT5 5AIs is a 3-stage deliberation system where multiple LLMs collaboratively a
 - Frontend displays model names for readability
 - This prevents bias while maintaining transparency
 
+### Dynamic Model Configuration
+- Chairman and Council models are stored in `app_settings` table
+- Configurable via Admin Dashboard UI
+- Fallback to `config.py` defaults if DB settings not found
+- Changes take effect immediately (no restart needed)
+
 ### Error Handling Philosophy
 - Continue with successful responses if some models fail
 - Never fail the entire request due to single model failure
@@ -164,6 +206,7 @@ All backend modules use relative imports (e.g., `from .config import ...`). Run 
 - `pydantic[email]` - Required for EmailStr validation
 - `passlib[bcrypt]` - Required for password hashing
 - `slowapi` - Required for rate limiting
+- `supabase` - Required for database access
 
 ## Common Gotchas
 
@@ -171,8 +214,10 @@ All backend modules use relative imports (e.g., `from .config import ...`). Run 
 2. **CORS Issues**: Set `CORS_ORIGINS` environment variable for production
 3. **Email Validation Error**: Ensure `pydantic[email]` is installed
 4. **Password Hashing**: Old SHA-256 hashes are incompatible with bcrypt
-5. **JWT_SECRET fehlt**: Backend startet nicht ohne `JWT_SECRET` - generiere mit `openssl rand -base64 32`
-6. **slowapi Request-Parameter**: Bei Rate-Limited Endpoints muss der erste Parameter `request: Request` heißen, Pydantic-Body als `body: ModelName`
+5. **JWT_SECRET missing**: Backend won't start - generate with `openssl rand -base64 32`
+6. **slowapi Request-Parameter**: Rate-limited endpoints must have `request: Request` as first param, Pydantic body as `body: ModelName`
+7. **Supabase env vars missing**: Backend won't start without `SUPABASE_URL` and `SUPABASE_KEY`
+8. **Schema must be applied first**: Run `backend/schema.sql` in Supabase SQL Editor before first start
 
 ## Data Flow Summary
 
@@ -200,29 +245,36 @@ llm-council/
 │   ├── __init__.py
 │   ├── auth.py          # JWT authentication
 │   ├── config.py        # Configuration & env vars
-│   ├── council.py       # 3-stage logic
-│   ├── main.py          # FastAPI app
+│   ├── council.py       # 3-stage logic (dynamic models)
+│   ├── database.py      # Supabase client
+│   ├── main.py          # FastAPI app + admin settings endpoints
 │   ├── openrouter.py    # LLM API client
-│   ├── storage.py       # Conversation storage
-│   └── user_storage.py  # User storage (bcrypt)
+│   ├── schema.sql       # Database schema (run in Supabase)
+│   ├── settings.py      # App settings CRUD
+│   ├── storage.py       # Conversation storage (Supabase)
+│   └── user_storage.py  # User storage (Supabase + bcrypt)
 ├── frontend/
 │   ├── src/
-│   │   ├── api.js       # API client
+│   │   ├── api.js       # API client (+ admin methods)
 │   │   ├── auth.jsx     # Auth context
-│   │   ├── App.jsx      # Main app
+│   │   ├── App.jsx      # Main app (+ admin view toggle)
 │   │   ├── App.css      # Main styles
 │   │   ├── index.css    # CSS variables
 │   │   └── components/
+│   │       ├── AdminDashboard.jsx  # Admin UI
+│   │       ├── AdminDashboard.css  # Admin styles
+│   │       └── Login.jsx           # Login/Register
 │   └── index.html
-├── CLAUDE.md            # Diese Datei
-├── CHANGELOG.md         # Entwicklungsstand
+├── CLAUDE.md            # This file
+├── CHANGELOG.md         # Development history
 └── pyproject.toml       # Python dependencies
 ```
 
-## Nächste Schritte
+## Next Steps
 
-- [x] Rate Limiting implementieren
-- [ ] Passwort-Zurücksetzen per E-Mail
-- [ ] Token-Refresh-Mechanismus
+- [x] Rate Limiting
+- [x] Migration to database (Supabase)
+- [x] Admin UI for model configuration
+- [ ] Password reset via email
+- [ ] Token refresh mechanism
 - [ ] Unit Tests
-- [ ] Migration zu Datenbank
