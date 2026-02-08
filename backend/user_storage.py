@@ -11,15 +11,20 @@ logger = logging.getLogger(__name__)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
+def _truncate_password(password: str) -> str:
+    """Truncate password to 72 bytes (bcrypt limit)."""
+    return password.encode("utf-8")[:72].decode("utf-8", errors="ignore")
+
+
 def hash_password(password: str) -> str:
     """Hash a password using bcrypt."""
-    return pwd_context.hash(password)
+    return pwd_context.hash(_truncate_password(password))
 
 
 def verify_password(user: Dict[str, Any], password: str) -> bool:
     """Verify a password against a user's password hash."""
     stored_hash = user.get("password_hash", "")
-    return pwd_context.verify(password, stored_hash)
+    return pwd_context.verify(_truncate_password(password), stored_hash)
 
 
 def create_user(username: str, email: str, password: str) -> Dict[str, Any]:
