@@ -8,7 +8,7 @@ from .database import supabase
 logger = logging.getLogger(__name__)
 
 # Password hashing context using bcrypt
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__truncate_error=False)
 
 
 def _truncate_password(password: str) -> str:
