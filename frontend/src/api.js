@@ -218,7 +218,7 @@ export const api = {
             const parsed = JSON.parse(data);
             switch (parsed.type) {
               case 'stage1_complete':
-                onStage1?.(parsed.data);
+                onStage1?.(parsed.data, parsed.failed_models);
                 break;
               case 'stage2_complete':
                 onStage2?.(parsed.data, parsed.metadata);

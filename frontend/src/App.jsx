@@ -17,6 +17,7 @@ function App() {
   const [stage3Result, setStage3Result] = useState(null);
   const [metadata, setMetadata] = useState(null);
   const [activeTab, setActiveTab] = useState(0);
+  const [failedModels, setFailedModels] = useState({ stage1: [], stage2: [] });
   const [currentStage, setCurrentStage] = useState(null);
   const [view, setView] = useState('chat');
   const [uploadingPdf, setUploadingPdf] = useState(false);
@@ -108,6 +109,7 @@ function App() {
     setStage2Results(null);
     setStage3Result(null);
     setMetadata(null);
+    setFailedModels({ stage1: [], stage2: [] });
     setCurrentStage(null);
     setActiveTab(0);
   };
@@ -169,13 +171,15 @@ function App() {
       await api.sendMessageStream(
         currentConversation.id,
         messageContent,
-        (data) => {
+        (data, failed) => {
           setStage1Results(data);
+          setFailedModels(prev => ({ ...prev, stage1: failed || [] }));
           setCurrentStage(2);
         },
         (data, meta) => {
           setStage2Results(data);
           setMetadata(meta);
+          setFailedModels(prev => ({ ...prev, stage2: meta?.stage2_failed || [] }));
           setCurrentStage(3);
         },
         (data) => {
@@ -237,6 +241,15 @@ function App() {
     return msg.stage1 || msg.stage2 || msg.stage3;
   };
 
+  const renderFailedModelsBanner = (failed, totalCount) => {
+    if (!failed || failed.length === 0) return null;
+    return (
+      <div className="failed-models-banner">
+        <span>&#9888; {failed.length} of {totalCount} model{totalCount !== 1 ? 's' : ''} failed: {failed.map(m => getModelDisplayName(m)).join(', ')}</span>
+      </div>
+    );
+  };
+
   // Render a loaded assistant message with stage data
   const renderLoadedAssistantMessage = (msg) => {
     // Ensure activeTab is within bounds for this message's stage1
@@ -260,6 +273,10 @@ function App() {
         {msg.stage1 && Array.isArray(msg.stage1) && msg.stage1.length > 0 && (
           <div className="stage-section">
             <h3>Stage 1: Individual Responses</h3>
+            {renderFailedModelsBanner(
+              msg.metadata?.stage1_failed,
+              msg.stage1.length + (msg.metadata?.stage1_failed?.length || 0)
+            )}
             <div className="tabs">
               {msg.stage1.map((result, idx) => (
                 <button
@@ -270,6 +287,11 @@ function App() {
                   {getModelDisplayName(result.model)}
                 </button>
               ))}
+              {msg.metadata?.stage1_failed?.map((model) => (
+                <span key={model} className="tab failed">
+                  {getModelDisplayName(model)}
+                </span>
+              ))}
             </div>
             <div className="tab-content">
               <ReactMarkdown>{msg.stage1[safeActiveTab]?.response || 'No response'}</ReactMarkdown>
@@ -279,6 +301,10 @@ function App() {
         {msg.stage2 && Array.isArray(msg.stage2) && msg.stage2.length > 0 && (
           <div className="stage-section">
             <h3>Stage 2: Peer Reviews</h3>
+            {renderFailedModelsBanner(
+              msg.metadata?.stage2_failed,
+              msg.stage2.length + (msg.metadata?.stage2_failed?.length || 0)
+            )}
             {msg.metadata?.aggregate_rankings && Array.isArray(msg.metadata.aggregate_rankings) && msg.metadata.aggregate_rankings.length > 0 && (
               <div className="rankings">
                 <h4>Aggregate Rankings</h4>
@@ -316,6 +342,10 @@ function App() {
         <div className="stage-header">
           <h3>Stage 1: Individual Responses</h3>
         </div>
+        {renderFailedModelsBanner(
+          failedModels.stage1,
+          stage1Results.length + failedModels.stage1.length
+        )}
         <div className="tabs">
           {stage1Results.map((result, idx) => (
             <button
@@ -325,6 +355,11 @@ function App() {
             >
               {getModelDisplayName(result.model)}
             </button>
+          ))}
+          {failedModels.stage1.map((model) => (
+            <span key={model} className="tab failed">
+              {getModelDisplayName(model)}
+            </span>
           ))}
         </div>
         <div className="tab-content">
@@ -342,6 +377,10 @@ function App() {
         <div className="stage-header">
           <h3>Stage 2: Peer Reviews</h3>
         </div>
+        {renderFailedModelsBanner(
+          failedModels.stage2,
+          stage2Results.length + failedModels.stage2.length
+        )}
         {metadata.aggregate_rankings && Array.isArray(metadata.aggregate_rankings) && (
           <div className="rankings">
             <h4>Aggregate Rankings</h4>

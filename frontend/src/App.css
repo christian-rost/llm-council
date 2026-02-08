@@ -554,6 +554,33 @@ body {
   transform: scale(0.98);
 }
 
+/* Warning banner for failed models */
+.failed-models-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  color: #991b1b;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+/* Greyed-out tab for failed models */
+.tab.failed {
+  background: #f5f5f5;
+  color: #999;
+  text-decoration: line-through;
+  cursor: default;
+  border-color: #e0e0e0;
+}
+
+.tab.failed:hover {
+  border-color: #e0e0e0;
+}
+
 .stage-header {
   display: flex;
   justify-content: space-between;
