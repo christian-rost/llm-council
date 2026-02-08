@@ -39,7 +39,11 @@ export const api = {
         let errorMessage = 'Failed to register';
         try {
           const error = await response.json();
-          errorMessage = error.detail || errorMessage;
+          if (Array.isArray(error.detail)) {
+            errorMessage = error.detail.map(e => e.msg).join(', ');
+          } else {
+            errorMessage = error.detail || errorMessage;
+          }
         } catch (e) {
           errorMessage = `Server error: ${response.status} ${response.statusText}`;
         }

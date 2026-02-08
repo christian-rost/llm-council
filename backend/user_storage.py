@@ -1,5 +1,7 @@
 """Supabase-based storage for users."""
 
+import hashlib
+import base64
 import logging
 from typing import Optional, Dict, Any, List
 from passlib.context import CryptContext
@@ -8,23 +10,25 @@ from .database import supabase
 logger = logging.getLogger(__name__)
 
 # Password hashing context using bcrypt
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__truncate_error=False)
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
-def _truncate_password(password: str) -> str:
-    """Truncate password to 72 bytes (bcrypt limit)."""
-    return password.encode("utf-8")[:72].decode("utf-8", errors="ignore")
+def _prepare_password(password: str) -> str:
+    """Pre-hash password with SHA-256 to avoid bcrypt's 72-byte limit.
+    Always produces a 44-char base64 string, well within the limit."""
+    digest = hashlib.sha256(password.encode("utf-8")).digest()
+    return base64.b64encode(digest).decode("ascii")
 
 
 def hash_password(password: str) -> str:
-    """Hash a password using bcrypt."""
-    return pwd_context.hash(_truncate_password(password))
+    """Hash a password using bcrypt (with SHA-256 pre-hash)."""
+    return pwd_context.hash(_prepare_password(password))
 
 
 def verify_password(user: Dict[str, Any], password: str) -> bool:
     """Verify a password against a user's password hash."""
     stored_hash = user.get("password_hash", "")
-    return pwd_context.verify(_truncate_password(password), stored_hash)
+    return pwd_context.verify(_prepare_password(password), stored_hash)
 
 
 def create_user(username: str, email: str, password: str) -> Dict[str, Any]:
