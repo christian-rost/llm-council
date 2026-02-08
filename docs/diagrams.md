@@ -1,4 +1,4 @@
-# XQT5 5AIs - Architekturdiagramme
+# XQT5AIs - Architekturdiagramme
 
 ## 1. System-Architektur
 

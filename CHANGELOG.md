@@ -1,4 +1,4 @@
-# XQT5 5AIs - Entwicklungsstand
+# XQT5AIs - Entwicklungsstand
 
 ## Version 0.2.0 (Branch: version02)
 
@@ -24,7 +24,7 @@
 
 ### Überblick
 
-XQT5 5AIs ist ein 3-stufiges KI-Beratungssystem, bei dem mehrere LLMs gemeinsam Fragen beantworten. Die Innovation liegt in der anonymisierten Peer-Review in Stage 2, um Voreingenommenheit zu vermeiden.
+XQT5AIs ist ein 3-stufiges KI-Beratungssystem, bei dem mehrere LLMs gemeinsam Fragen beantworten. Die Innovation liegt in der anonymisierten Peer-Review in Stage 2, um Voreingenommenheit zu vermeiden.
 
 ### Architektur
 

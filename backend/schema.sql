@@ -1,4 +1,4 @@
--- XQT5 5AIs Database Schema for Supabase
+-- XQT5AIs Database Schema for Supabase
 -- Run this in the Supabase SQL Editor
 
 -- Users

@@ -1,1 +1,1 @@
-"""XQT5 5AIs backend package."""
+"""XQT5AIs backend package."""

@@ -1,4 +1,4 @@
-"""3-stage XQT5 5AIs orchestration with PDF support."""
+"""3-stage XQT5AIs orchestration with PDF support."""
 
 from typing import List, Dict, Any, Tuple, Optional
 from .openrouter import query_models_parallel, query_model
@@ -152,7 +152,7 @@ async def stage3_synthesize_final(
         for result in stage2_results
     ])
 
-    chairman_prompt = f"""You are the Chairman of XQT5 5AIs. Multiple AI models have provided responses to a user's question, and then ranked each other's responses.
+    chairman_prompt = f"""You are the Chairman of XQT5AIs. Multiple AI models have provided responses to a user's question, and then ranked each other's responses.
 
 Original Question: {user_query}
 

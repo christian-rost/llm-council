@@ -37,7 +37,7 @@ export default function Login() {
   return (
     <div className="login-container">
       <div className="login-box">
-        <h1>XQT5 5AIs</h1>
+        <h1>XQT5AIs</h1>
         <div className="login-tabs">
           <button
             className={isLogin ? 'active' : ''}

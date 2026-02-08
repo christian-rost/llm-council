@@ -471,7 +471,7 @@ function App() {
     <div className="app">
       <aside className="sidebar">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <h1>XQT5 5AIs</h1>
+          <h1>XQT5AIs</h1>
           <button 
             className="logout-btn" 
             onClick={logout}
@@ -524,7 +524,7 @@ function App() {
           <AdminDashboard />
         ) : !currentConversation ? (
           <div className="welcome">
-            <h2>Welcome to XQT5 5AIs</h2>
+            <h2>Welcome to XQT5AIs</h2>
             <p>Create a new conversation to get started</p>
           </div>
         ) : (
@@ -533,7 +533,7 @@ function App() {
               {messages.map((msg, idx) => (
                 <div key={idx} className={`message ${msg.role}`}>
                   <div className="message-header">
-                    {msg.role === 'user' ? 'YOU' : 'XQT5 5AIs'}
+                    {msg.role === 'user' ? 'YOU' : 'XQT5AIs'}
                   </div>
                   {msg.role === 'user' ? (
                     <div className="message-content">
@@ -551,7 +551,7 @@ function App() {
 
               {(stage1Results || stage2Results || stage3Result || currentStage) && (
                 <div className="message assistant">
-                  <div className="message-header">XQT5 5AIs</div>
+                  <div className="message-header">XQT5AIs</div>
                   <div className="message-content council-response">
                     {(stage1Results || stage2Results || stage3Result) && (
                       <div className="copy-results-btn-container">

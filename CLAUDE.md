@@ -1,11 +1,11 @@
-# CLAUDE.md - Technical Notes for XQT5 5AIs
+# CLAUDE.md - Technical Notes for XQT5AIs
 
 This file contains technical details, architectural decisions, and important implementation notes for future development sessions.
 
 ## Current State
 
 - **Branch**: `version1` (aktive Entwicklung)
-- **Produktname**: XQT5 5AIs (umbenannt von "LLM Council")
+- **Produktname**: XQT5AIs (umbenannt von "LLM Council")
 - **Deployment**: Coolify auf VPS
   - Frontend: https://5ais.xqtfive.com
   - Backend: Separate Instanz
@@ -13,7 +13,7 @@ This file contains technical details, architectural decisions, and important imp
 
 ## Project Overview
 
-XQT5 5AIs is a 3-stage deliberation system where multiple LLMs collaboratively answer user questions. The key innovation is anonymized peer review in Stage 2, preventing models from playing favorites.
+XQT5AIs is a 3-stage deliberation system where multiple LLMs collaboratively answer user questions. The key innovation is anonymized peer review in Stage 2, preventing models from playing favorites.
 
 ## Architecture
 

@@ -1,4 +1,4 @@
-"""Configuration for XQT5 5AIs."""
+"""Configuration for XQT5AIs."""
 
 import os
 from dotenv import load_dotenv

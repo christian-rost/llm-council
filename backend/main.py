@@ -1,4 +1,4 @@
-"""FastAPI backend for XQT5 5AIs with PDF support."""
+"""FastAPI backend for XQT5AIs with PDF support."""
 
 import logging
 import os
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 # Rate limiter setup
 limiter = Limiter(key_func=get_remote_address)
-app = FastAPI(title="XQT5 5AIs API")
+app = FastAPI(title="XQT5AIs API")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -123,7 +123,7 @@ async def root():
     """Health check endpoint."""
     return {
         "status": "ok",
-        "service": "XQT5 5AIs API"
+        "service": "XQT5AIs API"
     }
 
 
@@ -264,7 +264,9 @@ async def create_conversation(
 ):
     """Create a new conversation."""
     conversation_id = str(uuid.uuid4())
-    conversation = storage.create_conversation(conversation_id, user_id=current_user["id"])
+    # Admin user has id "admin" (not a UUID), so pass None for user_id
+    user_id = None if auth.is_admin_user(current_user) else current_user["id"]
+    conversation = storage.create_conversation(conversation_id, user_id=user_id)
     return conversation
 
 
