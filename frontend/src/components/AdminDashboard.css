@@ -257,6 +257,64 @@
   background: #ffebee;
 }
 
+/* API Key Created Box */
+.api-key-created {
+  background: #e8f5e9;
+  border: 1px solid #c8e6c9;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.api-key-created strong {
+  display: block;
+  color: #2e7d32;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.api-key-created-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--color-white);
+  border: 1px solid #c8e6c9;
+  border-radius: 6px;
+  padding: 10px 14px;
+}
+
+.api-key-created-value code {
+  flex: 1;
+  font-family: monospace;
+  font-size: 13px;
+  word-break: break-all;
+  color: var(--color-black);
+}
+
+.copy-key-btn {
+  padding: 6px 14px;
+  background: var(--color-primary);
+  color: var(--color-white);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background 0.2s;
+}
+
+.copy-key-btn:hover {
+  background: var(--color-primary-dark);
+}
+
+/* Key Prefix */
+.key-prefix {
+  font-family: monospace;
+  font-size: 13px;
+  color: var(--color-gray);
+}
+
 /* Loading */
 .admin-loading {
   display: flex;

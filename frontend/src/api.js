@@ -319,4 +319,40 @@ export const api = {
     if (!response.ok) throw new Error('Failed to delete user');
     return response.json();
   },
+
+  /**
+   * Admin: Get all API keys
+   */
+  async getAdminApiKeys() {
+    const response = await fetch(`${API_BASE}/api/admin/api-keys`, {
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to fetch API keys');
+    return response.json();
+  },
+
+  /**
+   * Admin: Create a new API key
+   */
+  async createAdminApiKey(name) {
+    const response = await fetch(`${API_BASE}/api/admin/api-keys`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ name }),
+    });
+    if (!response.ok) throw new Error('Failed to create API key');
+    return response.json();
+  },
+
+  /**
+   * Admin: Delete (deactivate) an API key
+   */
+  async deleteAdminApiKey(keyId) {
+    const response = await fetch(`${API_BASE}/api/admin/api-keys/${keyId}`, {
+      method: 'DELETE',
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to delete API key');
+    return response.json();
+  },
 };

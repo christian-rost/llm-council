@@ -8,6 +8,9 @@ function AdminDashboard() {
   const [councilModels, setCouncilModels] = useState([]);
   const [newModel, setNewModel] = useState('');
   const [users, setUsers] = useState([]);
+  const [apiKeys, setApiKeys] = useState([]);
+  const [newKeyName, setNewKeyName] = useState('');
+  const [createdKey, setCreatedKey] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
@@ -15,6 +18,7 @@ function AdminDashboard() {
   useEffect(() => {
     loadSettings();
     loadUsers();
+    loadApiKeys();
   }, []);
 
   const loadSettings = async () => {
@@ -35,6 +39,49 @@ function AdminDashboard() {
       setUsers(data);
     } catch (error) {
       console.error('Failed to load users:', error);
+    }
+  };
+
+  const loadApiKeys = async () => {
+    try {
+      const data = await api.getAdminApiKeys();
+      setApiKeys(data);
+    } catch (error) {
+      console.error('Failed to load API keys:', error);
+    }
+  };
+
+  const createApiKey = async () => {
+    const trimmed = newKeyName.trim();
+    if (!trimmed) return;
+    try {
+      const data = await api.createAdminApiKey(trimmed);
+      setCreatedKey(data.api_key);
+      setNewKeyName('');
+      loadApiKeys();
+      setMessage({ type: 'success', text: 'API key created' });
+    } catch (error) {
+      setMessage({ type: 'error', text: `Failed to create API key: ${error.message}` });
+    }
+  };
+
+  const deleteApiKey = async (keyId, keyName) => {
+    if (!confirm(`Deactivate API key "${keyName}"? This cannot be undone.`)) return;
+    try {
+      await api.deleteAdminApiKey(keyId);
+      setApiKeys(apiKeys.filter((k) => k.id !== keyId));
+      setMessage({ type: 'success', text: `API key "${keyName}" deactivated` });
+    } catch (error) {
+      setMessage({ type: 'error', text: `Failed to delete API key: ${error.message}` });
+    }
+  };
+
+  const copyToClipboard = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setMessage({ type: 'success', text: 'API key copied to clipboard' });
+    } catch {
+      setMessage({ type: 'error', text: 'Failed to copy to clipboard' });
     }
   };
 
@@ -129,6 +176,12 @@ function AdminDashboard() {
           onClick={() => setActiveSection('users')}
         >
           User Management
+        </button>
+        <button
+          className={`admin-tab ${activeSection === 'apikeys' ? 'active' : ''}`}
+          onClick={() => { setActiveSection('apikeys'); setCreatedKey(null); }}
+        >
+          API Keys
         </button>
       </div>
 
@@ -227,6 +280,87 @@ function AdminDashboard() {
                       >
                         Delete
                       </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {activeSection === 'apikeys' && (
+        <div className="admin-section">
+          <div className="admin-form-group">
+            <label>Create New API Key</label>
+            <p className="admin-hint">The key will only be shown once after creation. Copy it immediately.</p>
+            <div className="add-model-row">
+              <input
+                type="text"
+                value={newKeyName}
+                onChange={(e) => setNewKeyName(e.target.value)}
+                onKeyPress={(e) => { if (e.key === 'Enter') { e.preventDefault(); createApiKey(); } }}
+                placeholder="Key name (e.g. Production, Testing)"
+              />
+              <button className="add-model-btn" onClick={createApiKey}>
+                Create
+              </button>
+            </div>
+          </div>
+
+          {createdKey && (
+            <div className="api-key-created">
+              <strong>New API Key (copy now — it won't be shown again):</strong>
+              <div className="api-key-created-value">
+                <code>{createdKey}</code>
+                <button className="copy-key-btn" onClick={() => copyToClipboard(createdKey)}>
+                  Copy
+                </button>
+              </div>
+            </div>
+          )}
+
+          <table className="users-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Prefix</th>
+                <th>Rate Limit</th>
+                <th>Usage</th>
+                <th>Created</th>
+                <th>Last Used</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {apiKeys.length === 0 ? (
+                <tr>
+                  <td colSpan="8" className="no-users">No API keys</td>
+                </tr>
+              ) : (
+                apiKeys.map((key) => (
+                  <tr key={key.id}>
+                    <td>{key.name}</td>
+                    <td><code className="key-prefix">{key.key_prefix}...</code></td>
+                    <td>{key.rate_limit}/min</td>
+                    <td>{key.usage_count}</td>
+                    <td>{new Date(key.created_at).toLocaleDateString()}</td>
+                    <td>{key.last_used_at ? new Date(key.last_used_at).toLocaleDateString() : 'Never'}</td>
+                    <td>
+                      <span className={`status-badge ${key.is_active ? 'active' : 'inactive'}`}>
+                        {key.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                    <td>
+                      {key.is_active && (
+                        <button
+                          className="delete-user-btn"
+                          onClick={() => deleteApiKey(key.id, key.name)}
+                        >
+                          Deactivate
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))

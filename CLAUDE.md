@@ -299,7 +299,7 @@ llm-council/
 - [x] Admin UI for model configuration
 - [x] Failed models transparency (warning banners + greyed-out tabs)
 - [x] Public REST API (`/api/v1/council`) with API key authentication
-- [ ] Admin UI for API key management
+- [x] Admin UI for API key management
 - [ ] Password reset via email
 - [ ] Token refresh mechanism
 - [ ] Unit Tests
