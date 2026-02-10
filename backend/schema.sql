@@ -47,3 +47,18 @@ CREATE TABLE app_settings (
 INSERT INTO app_settings (key, value) VALUES
     ('chairman_model', '"google/gemini-3-pro-preview"'),
     ('council_models', '["openai/gpt-5.1", "google/gemini-3-pro-preview", "anthropic/claude-sonnet-4.5", "x-ai/grok-4"]');
+
+-- API Keys for public REST API
+CREATE TABLE api_keys (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(100) NOT NULL,
+    key_hash TEXT NOT NULL,
+    key_prefix VARCHAR(16) NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    rate_limit INTEGER DEFAULT 5,
+    usage_count INTEGER DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    last_used_at TIMESTAMPTZ
+);
+
+CREATE INDEX idx_api_keys_prefix ON api_keys(key_prefix);

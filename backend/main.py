@@ -3,12 +3,13 @@
 import logging
 import os
 import re
+import time
 import uuid
 import json
 import asyncio
 import base64
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Depends, Request
+from fastapi import FastAPI, HTTPException, UploadFile, File, Depends, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, field_validator, EmailStr
@@ -17,7 +18,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
-from . import storage, user_storage, auth, settings
+from . import storage, user_storage, auth, settings, api_keys
 from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
 
 logger = logging.getLogger(__name__)
@@ -39,7 +40,7 @@ app.add_middleware(
     allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_headers=["Authorization", "Content-Type", "X-API-Key"],
 )
 
 
@@ -123,6 +124,64 @@ class UpdateSettingsRequest(BaseModel):
         if v is not None and len(v) > 9:
             raise ValueError('Maximum 9 council models allowed')
         return v
+
+
+class CouncilRequest(BaseModel):
+    """Request for the public council API."""
+    question: str
+    pdf_data: Optional[str] = None
+    pdf_filename: Optional[str] = None
+
+    @field_validator('question')
+    @classmethod
+    def validate_question(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError('Question must not be empty')
+        if len(v) > 50000:
+            raise ValueError('Question must not exceed 50000 characters')
+        return v.strip()
+
+
+class CreateApiKeyRequest(BaseModel):
+    """Request to create a new API key."""
+    name: str
+    rate_limit: int = 5
+
+    @field_validator('name')
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError('Name must not be empty')
+        if len(v) > 100:
+            raise ValueError('Name must not exceed 100 characters')
+        return v.strip()
+
+    @field_validator('rate_limit')
+    @classmethod
+    def validate_rate_limit(cls, v: int) -> int:
+        if v < 1 or v > 100:
+            raise ValueError('Rate limit must be between 1 and 100')
+        return v
+
+
+async def get_api_key_user(x_api_key: str = Header(...)) -> Dict[str, Any]:
+    """Dependency: validate API key from X-API-Key header."""
+    key_record = api_keys.verify_api_key(x_api_key)
+    if key_record is None:
+        raise HTTPException(status_code=401, detail="Invalid or inactive API key")
+    return key_record
+
+
+def get_api_key_for_rate_limit(request: Request) -> str:
+    """Rate limit key function: use API key prefix instead of IP."""
+    api_key = request.headers.get("X-API-Key", "")
+    if api_key and len(api_key) >= 12:
+        return api_key[:12]
+    return get_remote_address(request)
+
+
+# Secondary limiter for API key-based rate limiting
+api_limiter = Limiter(key_func=get_api_key_for_rate_limit, app=app)
 
 
 @app.get("/")
@@ -551,6 +610,106 @@ async def update_admin_settings(
     if body.council_models is not None:
         settings.set_setting("council_models", body.council_models)
     return {"status": "updated"}
+
+
+# ── Public REST API ──────────────────────────────────────────────────────────
+
+@app.post("/api/v1/council")
+@api_limiter.limit("5/minute")
+async def public_council(
+    request: Request,
+    body: CouncilRequest,
+    key_record: dict = Depends(get_api_key_user),
+):
+    """
+    Public API: Run a full council deliberation.
+    Authenticated via X-API-Key header. Stateless (no conversation stored).
+    """
+    start_time = time.time()
+
+    try:
+        stage1_results, stage2_results, stage3_result, metadata = await run_full_council(
+            body.question,
+            pdf_data=body.pdf_data,
+            pdf_filename=body.pdf_filename,
+        )
+    except Exception as e:
+        logger.error(f"Council API error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+    # Check if all models failed
+    if not stage1_results:
+        raise HTTPException(status_code=503, detail="All council models failed")
+
+    processing_time = round(time.time() - start_time, 2)
+
+    # Reshape into public API response format
+    council_responses = [
+        {"model": r["model"], "response": r["response"]}
+        for r in stage1_results
+    ]
+
+    evaluations = [
+        {
+            "model": r["model"],
+            "evaluation": r["ranking"],
+            "ranking": r.get("parsed_ranking", []),
+        }
+        for r in stage2_results
+    ]
+
+    return {
+        "status": "success",
+        "question": body.question,
+        "council_responses": council_responses,
+        "evaluations": evaluations,
+        "aggregate_rankings": metadata.get("aggregate_rankings", []),
+        "final_answer": {
+            "model": stage3_result.get("model", ""),
+            "response": stage3_result.get("response", ""),
+        },
+        "metadata": {
+            "council_models": settings.get_council_models(),
+            "chairman_model": settings.get_chairman_model(),
+            "stage1_failed": metadata.get("stage1_failed", []),
+            "stage2_failed": metadata.get("stage2_failed", []),
+            "processing_time_seconds": processing_time,
+        },
+    }
+
+
+# ── Admin: API Key Management ───────────────────────────────────────────────
+
+@app.post("/api/admin/api-keys")
+async def create_api_key_endpoint(
+    body: CreateApiKeyRequest,
+    admin: dict = Depends(auth.get_current_admin),
+):
+    """Create a new API key (admin only). The plaintext key is returned only once."""
+    try:
+        result = api_keys.create_api_key(name=body.name, rate_limit=body.rate_limit)
+        return result
+    except Exception as e:
+        logger.error(f"Error creating API key: {e}")
+        raise HTTPException(status_code=500, detail="Error creating API key")
+
+
+@app.get("/api/admin/api-keys")
+async def list_api_keys_endpoint(admin: dict = Depends(auth.get_current_admin)):
+    """List all API keys (admin only). Never returns the full key."""
+    return api_keys.list_api_keys()
+
+
+@app.delete("/api/admin/api-keys/{key_id}")
+async def delete_api_key_endpoint(
+    key_id: str,
+    admin: dict = Depends(auth.get_current_admin),
+):
+    """Deactivate an API key (admin only)."""
+    success = api_keys.delete_api_key(key_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="API key not found")
+    return {"status": "deactivated"}
 
 
 if __name__ == "__main__":

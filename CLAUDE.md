@@ -64,6 +64,14 @@ XQT5AIs is a 3-stage deliberation system where multiple LLMs collaboratively ans
 - **Dynamic models**: Uses `settings.get_council_models()` and `settings.get_chairman_model()` instead of hardcoded config
 - **Failed model tracking**: Models that fail (timeout, API error, invalid ID) are tracked and returned separately instead of being silently dropped
 
+**`api_keys.py`**
+- API Key management for the public REST API
+- `generate_api_key()`: Creates `xqt5-` + 48 hex chars key
+- `create_api_key(name, rate_limit)`: Stores bcrypt hash in DB, returns plaintext once
+- `verify_api_key(api_key)`: Prefix-lookup + bcrypt verify, updates `last_used_at` + `usage_count`
+- `list_api_keys()`: All keys without hash
+- `delete_api_key(key_id)`: Soft-delete (is_active=False)
+
 **`storage.py`**
 - **Supabase-based** conversation storage in `conversations` + `messages` tables
 - Messages stored separately with foreign key to conversation (CASCADE delete)
@@ -75,6 +83,8 @@ XQT5AIs is a 3-stage deliberation system where multiple LLMs collaboratively ans
 - Authentication endpoints: `/api/auth/register`, `/api/auth/login`, `/api/auth/me`
 - Admin endpoints: `/api/admin/users`, `/api/admin/users/{id}`, etc.
 - **Admin settings endpoints**: `/api/admin/settings` (GET/PUT)
+- **Admin API key endpoints**: `/api/admin/api-keys` (POST/GET/DELETE)
+- **Public REST API**: `/api/v1/council` (POST) — stateless council deliberation via API key
 - Input validation on registration (username 3-32 chars, EmailStr, password min 8 chars)
 - Internal errors not exposed to clients
 - **Rate-Limiting** via slowapi:
@@ -82,6 +92,7 @@ XQT5AIs is a 3-stage deliberation system where multiple LLMs collaboratively ans
   - `/api/auth/register`: 3 Requests/Minute
   - `/api/conversations/{id}/message`: 10 Requests/Minute
   - `/api/conversations/{id}/message/stream`: 10 Requests/Minute
+  - `/api/v1/council`: 5 Requests/Minute (per API key)
 
 ### Frontend Structure (`frontend/src/`)
 
@@ -134,6 +145,9 @@ messages (id UUID PK, conversation_id FK→conversations, role, content, stage1 
 
 -- App Settings (key-value)
 app_settings (key VARCHAR PK, value JSONB, updated_at)
+
+-- API Keys (public REST API)
+api_keys (id UUID PK, name, key_hash, key_prefix, is_active, rate_limit, usage_count, created_at, last_used_at)
 ```
 
 Schema file: `backend/schema.sql` (run in Supabase SQL Editor)
@@ -173,6 +187,7 @@ Schema file: `backend/schema.sql` (run in Supabase SQL Editor)
 9. **UUID User-IDs**: No timestamp collisions
 10. **Rate-Limiting**: slowapi for brute-force and DoS protection
 11. **Supabase RLS**: Database-level security (configurable in Supabase dashboard)
+12. **API Key Authentication**: Bcrypt-hashed keys with prefix-lookup for the public REST API
 
 ## Key Design Decisions
 
@@ -249,11 +264,12 @@ Frontend: Display with tabs + warning banners for failed models
 llm-council/
 ├── backend/
 │   ├── __init__.py
+│   ├── api_keys.py      # API key management (public REST API)
 │   ├── auth.py          # JWT authentication
 │   ├── config.py        # Configuration & env vars
 │   ├── council.py       # 3-stage logic (dynamic models)
 │   ├── database.py      # Supabase client
-│   ├── main.py          # FastAPI app + admin settings endpoints
+│   ├── main.py          # FastAPI app + admin settings + public API endpoints
 │   ├── openrouter.py    # LLM API client
 │   ├── schema.sql       # Database schema (run in Supabase)
 │   ├── settings.py      # App settings CRUD
@@ -282,6 +298,8 @@ llm-council/
 - [x] Migration to database (Supabase)
 - [x] Admin UI for model configuration
 - [x] Failed models transparency (warning banners + greyed-out tabs)
+- [x] Public REST API (`/api/v1/council`) with API key authentication
+- [ ] Admin UI for API key management
 - [ ] Password reset via email
 - [ ] Token refresh mechanism
 - [ ] Unit Tests
