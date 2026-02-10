@@ -180,10 +180,6 @@ def get_api_key_for_rate_limit(request: Request) -> str:
     return get_remote_address(request)
 
 
-# Secondary limiter for API key-based rate limiting
-api_limiter = Limiter(key_func=get_api_key_for_rate_limit, app=app)
-
-
 @app.get("/")
 async def root():
     """Health check endpoint."""
@@ -615,7 +611,7 @@ async def update_admin_settings(
 # ── Public REST API ──────────────────────────────────────────────────────────
 
 @app.post("/api/v1/council")
-@api_limiter.limit("5/minute")
+@limiter.limit("5/minute", key_func=get_api_key_for_rate_limit)
 async def public_council(
     request: Request,
     body: CouncilRequest,
