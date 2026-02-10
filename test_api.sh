@@ -62,7 +62,7 @@ echo "--- Step 4: Council-Anfrage (dauert 30-60s) ---"
 curl -s -X POST "$BACKEND_URL/api/v1/council" \
   -H "X-API-Key: $API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"question":"Was ist der Unterschied zwischen Machine Learning und Deep Learning? Antworte kurz."}' | python3 -m json.tool
+  -d '{"question":"Gib mir Infos über Linsengericht, einer Gemeinde im Main-Kinzig-Kreis."}' | python3 -m json.tool
 
 echo ""
 
