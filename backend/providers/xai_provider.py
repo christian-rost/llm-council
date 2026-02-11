@@ -50,16 +50,14 @@ async def query(
             "content": msg["content"],
         })
 
+    # OpenAI uses "web_search_preview", xAI uses "web_search"
+    tool_type = "web_search_preview" if provider == "openai" else "web_search"
+
     payload = {
         "model": model,
         "input": input_messages,
-        "tools": [{"type": "web_search"}],
+        "tools": [{"type": tool_type}],
     }
-
-    # OpenAI reasoning models (gpt-5+) need reasoning.effort >= "low" for tool use.
-    # Default "none" disables web_search invocation.
-    if provider == "openai":
-        payload["reasoning"] = {"effort": "low"}
 
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
