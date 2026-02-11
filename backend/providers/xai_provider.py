@@ -39,21 +39,13 @@ async def query(
         "Content-Type": "application/json",
     }
 
-    # OpenAI uses "web_search_preview", xAI uses "web_search"
-    tool_type = "web_search_preview" if provider == "openai" else "web_search"
-
-    # Build input: use simple string for single user message (matches official examples),
-    # otherwise use messages array
-    user_messages = [m for m in messages if m["role"] == "user"]
-    if len(messages) == 1 and messages[0]["role"] == "user":
-        input_value = messages[0]["content"]
-    else:
-        input_value = [{"role": m["role"], "content": m["content"]} for m in messages]
+    # Convert messages to the Responses API input format (messages array)
+    input_messages = [{"role": m["role"], "content": m["content"]} for m in messages]
 
     payload = {
         "model": model,
-        "input": input_value,
-        "tools": [{"type": tool_type}],
+        "input": input_messages,
+        "tools": [{"type": "web_search"}],
     }
 
     logger.info(f"{provider} Responses API request for {model}: {json.dumps(payload, default=str)[:500]}")
@@ -69,12 +61,6 @@ async def query(
                 )
                 return None
             data = response.json()
-            logger.info(
-                f"{provider} Responses API response details for {model}: "
-                f"reasoning={data.get('reasoning')}, "
-                f"tool_choice={data.get('tool_choice')}, "
-                f"tools={data.get('tools')}"
-            )
 
             # Check if web search was actually invoked
             output_types = [item.get("type") for item in data.get("output", [])]
