@@ -46,7 +46,7 @@ Web search can be enabled globally via Admin Dashboard toggle (stored in `app_se
 | `openai` | `/v1/responses` endpoint with `tools: [{"type": "web_search"}]` | Responses API (chat completions `web_search_options` only works with search-specific models) |
 | `google` | `tools: [{"google_search": {}}]` in generateContent payload | Google Search grounding |
 | `xai` | `/v1/responses` endpoint with `tools: [{"type": "web_search"}]` | Responses API (chat completions web search deprecated) |
-| `anthropic` | Not available | - |
+| `anthropic` | Server-side `web_search_20250305` tool in Messages API | Same endpoint, tool added to payload |
 | `mistral` | Not available | - |
 
 **Responses API Routing**: When `web_search=True`, OpenAI and xAI requests are routed to `xai_provider.py` (Responses API at `/v1/responses`) instead of `openai_provider.py` (Chat Completions). Without web search, both continue to use the OpenAI-compatible chat/completions endpoint.
@@ -64,7 +64,7 @@ Web search can be enabled globally via Admin Dashboard toggle (stored in `app_se
 - **`base.py`**: `PROVIDER_CONFIGS` dict, Fernet encryption helpers (`encrypt_value`, `decrypt_value`, key derived from `JWT_SECRET`)
 - **`openrouter.py`**: OpenRouter-specific handler (PDF via file-parser plugin)
 - **`openai_provider.py`**: OpenAI-compatible handler (works for OpenAI, xAI, Mistral; PDF as base64 image_url)
-- **`anthropic_provider.py`**: Anthropic Messages API (system param, content blocks, PDF as document block, `max_tokens: 8192`)
+- **`anthropic_provider.py`**: Anthropic Messages API (system param, content blocks, PDF as document block, `max_tokens: 8192`, `web_search_20250305` tool for web search)
 - **`google_provider.py`**: Gemini generateContent (role mapping, inline_data for PDF, `google_search` tool for web search)
 - **`xai_provider.py`**: Responses API handler for OpenAI + xAI web search (`/v1/responses` with `web_search` tool)
 

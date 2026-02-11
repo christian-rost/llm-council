@@ -16,6 +16,7 @@ async def query(
     timeout: float = 120.0,
     pdf_data: Optional[str] = None,
     pdf_filename: Optional[str] = None,
+    web_search: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """Query via Anthropic Messages API."""
     headers = {
@@ -61,11 +62,24 @@ async def query(
     if system_parts:
         payload["system"] = "\n\n".join(system_parts)
 
+    if web_search:
+        payload["tools"] = [{"type": "web_search_20250305", "name": "web_search"}]
+
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(ANTHROPIC_URL, headers=headers, json=payload)
             response.raise_for_status()
             data = response.json()
+
+            # Handle pause_turn: continue the conversation to get full response
+            if data.get("stop_reason") == "pause_turn":
+                continued_messages = formatted_messages + [
+                    {"role": "assistant", "content": data.get("content", [])}
+                ]
+                cont_payload = {**payload, "messages": continued_messages}
+                response = await client.post(ANTHROPIC_URL, headers=headers, json=cont_payload)
+                response.raise_for_status()
+                data = response.json()
 
             # Anthropic returns content as a list of blocks
             content_blocks = data.get("content", [])
@@ -74,6 +88,17 @@ async def query(
                 for block in content_blocks
                 if block.get("type") == "text"
             ]
+
+            if web_search:
+                search_performed = any(
+                    block.get("type") == "server_tool_use" and block.get("name") == "web_search"
+                    for block in content_blocks
+                )
+                logger.info(
+                    f"Anthropic for {model}: "
+                    f"web_search={'YES' if search_performed else 'NO'}"
+                )
+
             return {
                 "content": "\n".join(text_parts),
                 "reasoning_details": None,

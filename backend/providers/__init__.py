@@ -88,6 +88,7 @@ async def query_model(
         return await anthropic_provider.query(
             bare_model, messages, api_key,
             timeout=timeout, pdf_data=pdf_data, pdf_filename=pdf_filename,
+            web_search=web_search,
         )
     elif provider == "google":
         return await google_provider.query(

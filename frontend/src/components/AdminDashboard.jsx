@@ -385,7 +385,7 @@ function AdminDashboard() {
           <div className="admin-form-group">
             <label>Web Search</label>
             <p className="admin-hint">
-              Enables web search for Stage 1 responses. Supported by: OpenRouter (:online), OpenAI, Google Gemini, xAI. Not available for: Anthropic, Mistral.
+              Enables web search for Stage 1 responses. Supported by: OpenRouter (:online), OpenAI, Google Gemini, xAI, Anthropic. Not available for: Mistral.
             </p>
             <div className="toggle-row">
               <label className="toggle-switch">
