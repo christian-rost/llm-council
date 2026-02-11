@@ -1,8 +1,8 @@
-"""xAI Responses API provider — used when web_search is enabled.
+"""Responses API provider — used for web_search with OpenAI and xAI.
 
-Without web_search, xAI uses the OpenAI-compatible chat/completions endpoint
-(handled by openai_provider.py). With web_search, xAI requires the newer
-/v1/responses endpoint with a web_search tool.
+Both OpenAI and xAI support the Responses API (/v1/responses) with a
+web_search tool. Without web_search, these providers use the
+OpenAI-compatible chat/completions endpoint (openai_provider.py).
 """
 
 import logging
@@ -11,18 +11,28 @@ from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
-XAI_RESPONSES_URL = "https://api.x.ai/v1/responses"
+# Responses API endpoints per provider
+RESPONSES_URLS = {
+    "xai": "https://api.x.ai/v1/responses",
+    "openai": "https://api.openai.com/v1/responses",
+}
 
 
 async def query(
     model: str,
     messages: List[Dict[str, Any]],
     api_key: str,
+    provider: str = "xai",
     timeout: float = 120.0,
     pdf_data: Optional[str] = None,
     pdf_filename: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
-    """Query via xAI Responses API with web_search tool."""
+    """Query via Responses API with web_search tool."""
+    url = RESPONSES_URLS.get(provider)
+    if not url:
+        logger.error(f"No Responses API URL configured for provider '{provider}'")
+        return None
+
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
@@ -44,7 +54,7 @@ async def query(
 
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(XAI_RESPONSES_URL, headers=headers, json=payload)
+            response = await client.post(url, headers=headers, json=payload)
             response.raise_for_status()
             data = response.json()
 
@@ -63,5 +73,5 @@ async def query(
                 "reasoning_details": None,
             }
     except Exception as e:
-        logger.error(f"xAI Responses API error for {model}: {e}")
+        logger.error(f"{provider} Responses API error for {model}: {e}")
         return None

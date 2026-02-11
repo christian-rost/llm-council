@@ -43,13 +43,13 @@ Web search can be enabled globally via Admin Dashboard toggle (stored in `app_se
 | Provider | Web Search Mechanism | Notes |
 |----------|---------------------|-------|
 | `openrouter` | `:online` suffix appended to model name | Existing mechanism |
-| `openai` | `web_search_options: {}` in chat completions payload | Native OpenAI web search |
+| `openai` | `/v1/responses` endpoint with `tools: [{"type": "web_search"}]` | Responses API (chat completions `web_search_options` only works with search-specific models) |
 | `google` | `tools: [{"google_search": {}}]` in generateContent payload | Google Search grounding |
-| `xai` | `/v1/responses` endpoint with `tools: [{"type": "web_search"}]` | Separate API (not chat completions) |
+| `xai` | `/v1/responses` endpoint with `tools: [{"type": "web_search"}]` | Responses API (chat completions web search deprecated) |
 | `anthropic` | Not available | - |
 | `mistral` | Not available | - |
 
-**xAI Routing**: When `web_search=True`, xAI requests are routed to `xai_provider.py` (Responses API) instead of `openai_provider.py` (Chat Completions). Without web search, xAI continues to use the OpenAI-compatible endpoint.
+**Responses API Routing**: When `web_search=True`, OpenAI and xAI requests are routed to `xai_provider.py` (Responses API at `/v1/responses`) instead of `openai_provider.py` (Chat Completions). Without web search, both continue to use the OpenAI-compatible chat/completions endpoint.
 
 ### Backend Structure (`backend/`)
 
@@ -64,7 +64,7 @@ Web search can be enabled globally via Admin Dashboard toggle (stored in `app_se
 - **`openai_provider.py`**: OpenAI-compatible handler (works for OpenAI, xAI, Mistral; PDF as base64 image_url)
 - **`anthropic_provider.py`**: Anthropic Messages API (system param, content blocks, PDF as document block, `max_tokens: 8192`)
 - **`google_provider.py`**: Gemini generateContent (role mapping, inline_data for PDF, `google_search` tool for web search)
-- **`xai_provider.py`**: xAI Responses API handler (used only when `web_search=True`; `/v1/responses` with `web_search` tool)
+- **`xai_provider.py`**: Responses API handler for OpenAI + xAI web search (`/v1/responses` with `web_search` tool)
 
 **`config.py`**
 - Contains `COUNCIL_MODELS` and `CHAIRMAN_MODEL` as fallback defaults
@@ -355,10 +355,10 @@ llm-council/
 │   │   ├── __init__.py      # Registry, dispatcher, query_model(), query_models_parallel()
 │   │   ├── base.py          # PROVIDER_CONFIGS, Fernet encryption helpers
 │   │   ├── openrouter.py    # OpenRouter handler (PDF file-parser plugin)
-│   │   ├── openai_provider.py  # OpenAI/xAI/Mistral handler (+ web_search_options for OpenAI)
+│   │   ├── openai_provider.py  # OpenAI/xAI/Mistral chat completions handler
 │   │   ├── anthropic_provider.py  # Anthropic Messages API handler
 │   │   ├── google_provider.py     # Google Gemini generateContent handler (+ google_search tool)
-│   │   └── xai_provider.py       # xAI Responses API handler (web search only)
+│   │   └── xai_provider.py       # Responses API handler for OpenAI + xAI web search
 │   ├── api_keys.py      # API key management (public REST API)
 │   ├── auth.py          # JWT authentication
 │   ├── config.py        # Configuration & env vars (incl. provider API keys)

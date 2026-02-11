@@ -73,17 +73,16 @@ async def query_model(
             timeout=timeout, pdf_data=pdf_data, pdf_filename=pdf_filename,
             web_search=web_search,
         )
-    elif provider == "xai" and web_search:
-        # xAI web search requires the Responses API (/v1/responses)
+    elif provider in ("openai", "xai") and web_search:
+        # OpenAI + xAI web search requires the Responses API (/v1/responses)
         return await xai_provider.query(
-            bare_model, messages, api_key,
+            bare_model, messages, api_key, provider=provider,
             timeout=timeout, pdf_data=pdf_data, pdf_filename=pdf_filename,
         )
     elif provider in ("openai", "xai", "mistral"):
         return await openai_provider.query(
             bare_model, messages, api_key, provider=provider,
             timeout=timeout, pdf_data=pdf_data, pdf_filename=pdf_filename,
-            web_search=web_search,
         )
     elif provider == "anthropic":
         return await anthropic_provider.query(
