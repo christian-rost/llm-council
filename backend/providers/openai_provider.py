@@ -26,19 +26,34 @@ async def query(
         "Content-Type": "application/json",
     }
 
-    # Convert messages, adding PDF as base64 image_url to last user message
+    # Convert messages, adding PDF to last user message
     formatted_messages = []
     for i, msg in enumerate(messages):
         if msg["role"] == "user" and pdf_data and i == len(messages) - 1:
-            content = [
-                {"type": "text", "text": msg["content"]},
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:application/pdf;base64,{pdf_data}",
+            filename = pdf_filename or "document.pdf"
+            if provider == "openai":
+                # OpenAI Chat Completions: "file" content type
+                content = [
+                    {
+                        "type": "file",
+                        "file": {
+                            "filename": filename,
+                            "file_data": f"data:application/pdf;base64,{pdf_data}",
+                        },
                     },
-                },
-            ]
+                    {"type": "text", "text": msg["content"]},
+                ]
+            else:
+                # xAI, Mistral: image_url fallback
+                content = [
+                    {"type": "text", "text": msg["content"]},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:application/pdf;base64,{pdf_data}",
+                        },
+                    },
+                ]
             formatted_messages.append({"role": msg["role"], "content": content})
         else:
             formatted_messages.append(msg)

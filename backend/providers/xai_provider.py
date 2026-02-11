@@ -39,7 +39,21 @@ async def query(
     }
 
     # Convert messages to the Responses API input format (messages array)
-    input_messages = [{"role": m["role"], "content": m["content"]} for m in messages]
+    input_messages = []
+    for i, m in enumerate(messages):
+        if m["role"] == "user" and pdf_data and i == len(messages) - 1:
+            filename = pdf_filename or "document.pdf"
+            content = [
+                {
+                    "type": "input_file",
+                    "filename": filename,
+                    "file_data": f"data:application/pdf;base64,{pdf_data}",
+                },
+                {"type": "input_text", "text": m["content"]},
+            ]
+            input_messages.append({"role": m["role"], "content": content})
+        else:
+            input_messages.append({"role": m["role"], "content": m["content"]})
 
     payload = {
         "model": model,
