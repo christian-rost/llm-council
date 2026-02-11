@@ -36,6 +36,21 @@ XQT5AIs is a 3-stage deliberation system where multiple LLMs collaboratively ans
 
 **API Key Priority**: DB (encrypted, Fernet) > Environment Variable
 
+### Web Search Support
+
+Web search can be enabled globally via Admin Dashboard toggle (stored in `app_settings` as `web_search_enabled`). When enabled, Stage 1 queries include web search capabilities for supported providers.
+
+| Provider | Web Search Mechanism | Notes |
+|----------|---------------------|-------|
+| `openrouter` | `:online` suffix appended to model name | Existing mechanism |
+| `openai` | `web_search_options: {}` in chat completions payload | Native OpenAI web search |
+| `google` | `tools: [{"google_search": {}}]` in generateContent payload | Google Search grounding |
+| `xai` | `/v1/responses` endpoint with `tools: [{"type": "web_search"}]` | Separate API (not chat completions) |
+| `anthropic` | Not available | - |
+| `mistral` | Not available | - |
+
+**xAI Routing**: When `web_search=True`, xAI requests are routed to `xai_provider.py` (Responses API) instead of `openai_provider.py` (Chat Completions). Without web search, xAI continues to use the OpenAI-compatible endpoint.
+
 ### Backend Structure (`backend/`)
 
 **`backend/providers/`** — Multi-Provider Abstraction Layer
@@ -48,7 +63,8 @@ XQT5AIs is a 3-stage deliberation system where multiple LLMs collaboratively ans
 - **`openrouter.py`**: OpenRouter-specific handler (PDF via file-parser plugin)
 - **`openai_provider.py`**: OpenAI-compatible handler (works for OpenAI, xAI, Mistral; PDF as base64 image_url)
 - **`anthropic_provider.py`**: Anthropic Messages API (system param, content blocks, PDF as document block, `max_tokens: 8192`)
-- **`google_provider.py`**: Gemini generateContent (role mapping, inline_data for PDF)
+- **`google_provider.py`**: Gemini generateContent (role mapping, inline_data for PDF, `google_search` tool for web search)
+- **`xai_provider.py`**: xAI Responses API handler (used only when `web_search=True`; `/v1/responses` with `web_search` tool)
 
 **`config.py`**
 - Contains `COUNCIL_MODELS` and `CHAIRMAN_MODEL` as fallback defaults
@@ -66,6 +82,7 @@ XQT5AIs is a 3-stage deliberation system where multiple LLMs collaboratively ans
 - App settings stored in `app_settings` table (key-value, JSONB)
 - `get_setting(key, default)` / `set_setting(key, value)` (upsert)
 - `get_chairman_model()` / `get_council_models()` with config.py fallbacks
+- `get_web_search_enabled()` / `set_web_search_enabled()` — stored in `app_settings` (key: `web_search_enabled`)
 - **Provider Key Management**:
   - `get_provider_api_key(provider)` → Decrypts from DB
   - `set_provider_api_key(provider, api_key)` → Encrypts + upsert
@@ -89,7 +106,7 @@ XQT5AIs is a 3-stage deliberation system where multiple LLMs collaboratively ans
 
 **`council.py`** - The Core Logic
 - Imports from `providers` (not `openrouter` directly)
-- `stage1_collect_responses()`: Parallel queries to all council models → returns `(results, failed_models)`
+- `stage1_collect_responses()`: Parallel queries to all council models → returns `(results, failed_models)` — accepts `web_search` flag
 - `stage2_collect_rankings()`: Anonymized peer rankings → returns `(results, label_to_model, failed_models)`
 - `stage3_synthesize_final()`: Chairman synthesizes final answer
 - `parse_ranking_from_text()`: Extracts "FINAL RANKING:" section
@@ -156,7 +173,7 @@ XQT5AIs is a 3-stage deliberation system where multiple LLMs collaboratively ans
 - Tab-based UI for switching between login/register
 
 **`components/AdminDashboard.jsx`**
-- **Model Configuration**: Provider dropdown + model name input for Chairman and Council models
+- **Model Configuration**: Provider dropdown + model name input for Chairman and Council models; Web Search toggle
 - **Providers Tab**: Provider cards with status (DB/Env/Not configured), key input, save/delete/test buttons
 - **User Management**: User table with delete functionality
 - **API Keys Tab**: API key management
@@ -309,13 +326,13 @@ All backend modules use relative imports (e.g., `from .config import ...`). Run 
 ## Data Flow Summary
 
 ```
-User Query
+User Query + web_search setting from DB
     ↓
 parse_model_id() → (provider, bare_model)
     ↓
 get_api_key(provider) → DB key or env var
     ↓
-Stage 1: Parallel queries via provider-specific handlers → [individual responses] + [failed_models]
+Stage 1: Parallel queries via provider-specific handlers (+ web search if enabled) → [individual responses] + [failed_models]
     ↓
 Stage 2: Anonymize → Parallel ranking queries → [evaluations + parsed rankings] + [failed_models]
     ↓
@@ -338,9 +355,10 @@ llm-council/
 │   │   ├── __init__.py      # Registry, dispatcher, query_model(), query_models_parallel()
 │   │   ├── base.py          # PROVIDER_CONFIGS, Fernet encryption helpers
 │   │   ├── openrouter.py    # OpenRouter handler (PDF file-parser plugin)
-│   │   ├── openai_provider.py  # OpenAI/xAI/Mistral handler
+│   │   ├── openai_provider.py  # OpenAI/xAI/Mistral handler (+ web_search_options for OpenAI)
 │   │   ├── anthropic_provider.py  # Anthropic Messages API handler
-│   │   └── google_provider.py     # Google Gemini generateContent handler
+│   │   ├── google_provider.py     # Google Gemini generateContent handler (+ google_search tool)
+│   │   └── xai_provider.py       # xAI Responses API handler (web search only)
 │   ├── api_keys.py      # API key management (public REST API)
 │   ├── auth.py          # JWT authentication
 │   ├── config.py        # Configuration & env vars (incl. provider API keys)
@@ -379,6 +397,7 @@ llm-council/
 - [x] Admin UI for API key management
 - [x] Multi-Provider support (OpenAI, Google, Anthropic, xAI, Mistral + OpenRouter)
 - [x] Provider API key management (Admin UI + encrypted DB storage)
+- [x] Web Search support for direct providers (OpenAI, Google, xAI + OpenRouter)
 - [ ] Password reset via email
 - [ ] Token refresh mechanism
 - [ ] Unit Tests

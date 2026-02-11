@@ -119,6 +119,7 @@ class UpdateSettingsRequest(BaseModel):
     """Request to update admin settings."""
     chairman_model: Optional[str] = None
     council_models: Optional[List[str]] = None
+    web_search_enabled: Optional[bool] = None
 
     @field_validator('council_models')
     @classmethod
@@ -422,10 +423,12 @@ async def send_message(
         storage.update_conversation_title(conversation_id, title)
 
     # Run the 3-stage council process (with optional PDF)
+    web_search = settings.get_web_search_enabled()
     stage1_results, stage2_results, stage3_result, metadata = await run_full_council(
         body.content,
         pdf_data=body.pdf_data,
-        pdf_filename=body.pdf_filename
+        pdf_filename=body.pdf_filename,
+        web_search=web_search,
     )
 
     # Add assistant message with all stages
@@ -483,11 +486,13 @@ async def send_message_stream(
                 title_task = asyncio.create_task(generate_conversation_title(body.content))
 
             # Stage 1: Collect responses (with optional PDF)
+            web_search = settings.get_web_search_enabled()
             yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
             stage1_results, stage1_failed = await stage1_collect_responses(
                 body.content,
                 pdf_data=body.pdf_data,
-                pdf_filename=body.pdf_filename
+                pdf_filename=body.pdf_filename,
+                web_search=web_search,
             )
             yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results, 'failed_models': stage1_failed})}\n\n"
 
@@ -606,6 +611,7 @@ async def get_admin_settings(admin: dict = Depends(auth.get_current_admin)):
     return {
         "chairman_model": settings.get_chairman_model(),
         "council_models": settings.get_council_models(),
+        "web_search_enabled": settings.get_web_search_enabled(),
     }
 
 
@@ -619,6 +625,8 @@ async def update_admin_settings(
         settings.set_setting("chairman_model", body.chairman_model)
     if body.council_models is not None:
         settings.set_setting("council_models", body.council_models)
+    if body.web_search_enabled is not None:
+        settings.set_web_search_enabled(body.web_search_enabled)
     return {"status": "updated"}
 
 
@@ -638,10 +646,12 @@ async def public_council(
     start_time = time.time()
 
     try:
+        web_search = settings.get_web_search_enabled()
         stage1_results, stage2_results, stage3_result, metadata = await run_full_council(
             body.question,
             pdf_data=body.pdf_data,
             pdf_filename=body.pdf_filename,
+            web_search=web_search,
         )
     except Exception as e:
         logger.error(f"Council API error: {e}")

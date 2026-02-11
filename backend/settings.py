@@ -36,6 +36,16 @@ def get_council_models() -> list:
     return get_setting("council_models", DEFAULT_COUNCIL)
 
 
+def get_web_search_enabled() -> bool:
+    """Check if web search is enabled (default: False)."""
+    return get_setting("web_search_enabled", False)
+
+
+def set_web_search_enabled(enabled: bool) -> None:
+    """Enable or disable web search."""
+    set_setting("web_search_enabled", enabled)
+
+
 # ── Provider API Key Management ─────────────────────────────────────────────
 
 def get_provider_api_key(provider: str) -> Optional[str]:

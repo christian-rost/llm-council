@@ -16,6 +16,7 @@ async def query(
     timeout: float = 120.0,
     pdf_data: Optional[str] = None,
     pdf_filename: Optional[str] = None,
+    web_search: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """Query a model via OpenRouter API."""
     headers = {
@@ -41,8 +42,13 @@ async def query(
         else:
             formatted_messages.append(msg)
 
+    # Append :online suffix for web search (if not already present)
+    effective_model = model
+    if web_search and not model.endswith(":online"):
+        effective_model = f"{model}:online"
+
     payload = {
-        "model": model,
+        "model": effective_model,
         "messages": formatted_messages,
     }
 

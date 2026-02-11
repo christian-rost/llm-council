@@ -45,6 +45,7 @@ function AdminDashboard() {
   const [providerKeyInputs, setProviderKeyInputs] = useState({});
   const [testingProvider, setTestingProvider] = useState(null);
   const [savingProviderKey, setSavingProviderKey] = useState(null);
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
@@ -62,6 +63,7 @@ function AdminDashboard() {
       const chairman = data.chairman_model || '';
       setChairmanModel(chairman);
       setCouncilModels(data.council_models || []);
+      setWebSearchEnabled(data.web_search_enabled || false);
       // Parse chairman into provider + model
       const parsed = parseModelId(chairman);
       setChairmanProvider(parsed.provider);
@@ -187,6 +189,7 @@ function AdminDashboard() {
       await api.updateAdminSettings({
         chairman_model: fullChairman,
         council_models: councilModels,
+        web_search_enabled: webSearchEnabled,
       });
       setChairmanModel(fullChairman);
       setMessage({ type: 'success', text: 'Settings saved successfully' });
@@ -377,6 +380,24 @@ function AdminDashboard() {
               </button>
             </div>
             <p className="admin-hint">{councilModels.length}/{MAX_COUNCIL_MODELS} Models</p>
+          </div>
+
+          <div className="admin-form-group">
+            <label>Web Search</label>
+            <p className="admin-hint">
+              Enables web search for Stage 1 responses. Supported by: OpenRouter (:online), OpenAI, Google Gemini, xAI. Not available for: Anthropic, Mistral.
+            </p>
+            <div className="toggle-row">
+              <label className="toggle-switch">
+                <input
+                  type="checkbox"
+                  checked={webSearchEnabled}
+                  onChange={(e) => setWebSearchEnabled(e.target.checked)}
+                />
+                <span className="toggle-slider"></span>
+              </label>
+              <span className="toggle-label">{webSearchEnabled ? 'Enabled' : 'Disabled'}</span>
+            </div>
           </div>
 
           <button

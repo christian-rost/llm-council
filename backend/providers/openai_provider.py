@@ -17,6 +17,7 @@ async def query(
     timeout: float = 120.0,
     pdf_data: Optional[str] = None,
     pdf_filename: Optional[str] = None,
+    web_search: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """Query via OpenAI-compatible chat/completions endpoint."""
     base_url = PROVIDER_CONFIGS[provider]["base_url"]
@@ -47,6 +48,10 @@ async def query(
         "model": model,
         "messages": formatted_messages,
     }
+
+    # OpenAI web search (only for openai provider — xAI/Mistral don't support this param)
+    if web_search and provider == "openai":
+        payload["web_search_options"] = {}
 
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:

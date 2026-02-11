@@ -6,7 +6,7 @@ import os
 from typing import Dict, List, Any, Optional
 
 from .base import PROVIDER_CONFIGS
-from . import openrouter, openai_provider, anthropic_provider, google_provider
+from . import openrouter, openai_provider, anthropic_provider, google_provider, xai_provider
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +54,7 @@ async def query_model(
     timeout: float = 120.0,
     pdf_data: Optional[str] = None,
     pdf_filename: Optional[str] = None,
+    web_search: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """Dispatch a query to the correct provider based on model_id.
 
@@ -70,11 +71,19 @@ async def query_model(
         return await openrouter.query(
             bare_model, messages, api_key,
             timeout=timeout, pdf_data=pdf_data, pdf_filename=pdf_filename,
+            web_search=web_search,
+        )
+    elif provider == "xai" and web_search:
+        # xAI web search requires the Responses API (/v1/responses)
+        return await xai_provider.query(
+            bare_model, messages, api_key,
+            timeout=timeout, pdf_data=pdf_data, pdf_filename=pdf_filename,
         )
     elif provider in ("openai", "xai", "mistral"):
         return await openai_provider.query(
             bare_model, messages, api_key, provider=provider,
             timeout=timeout, pdf_data=pdf_data, pdf_filename=pdf_filename,
+            web_search=web_search,
         )
     elif provider == "anthropic":
         return await anthropic_provider.query(
@@ -85,6 +94,7 @@ async def query_model(
         return await google_provider.query(
             bare_model, messages, api_key,
             timeout=timeout, pdf_data=pdf_data, pdf_filename=pdf_filename,
+            web_search=web_search,
         )
     else:
         logger.error(f"Unknown provider '{provider}' for model '{model_id}'")
@@ -96,10 +106,11 @@ async def query_models_parallel(
     messages: List[Dict[str, Any]],
     pdf_data: Optional[str] = None,
     pdf_filename: Optional[str] = None,
+    web_search: bool = False,
 ) -> Dict[str, Optional[Dict[str, Any]]]:
     """Query multiple models in parallel via their respective providers."""
     tasks = [
-        query_model(model, messages, pdf_data=pdf_data, pdf_filename=pdf_filename)
+        query_model(model, messages, pdf_data=pdf_data, pdf_filename=pdf_filename, web_search=web_search)
         for model in models
     ]
     responses = await asyncio.gather(*tasks)

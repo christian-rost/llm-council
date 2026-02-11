@@ -8,7 +8,8 @@ from .settings import get_council_models, get_chairman_model
 async def stage1_collect_responses(
     user_query: str,
     pdf_data: Optional[str] = None,
-    pdf_filename: Optional[str] = None
+    pdf_filename: Optional[str] = None,
+    web_search: bool = False,
 ) -> Tuple[List[Dict[str, Any]], List[str]]:
     """
     Stage 1: Collect individual responses from all council models.
@@ -17,6 +18,7 @@ async def stage1_collect_responses(
         user_query: The user's question
         pdf_data: Optional base64-encoded PDF data
         pdf_filename: Optional filename for the PDF
+        web_search: Enable web search for providers that support it
 
     Returns:
         Tuple of (results list, failed_models list)
@@ -29,7 +31,8 @@ async def stage1_collect_responses(
         council_models,
         messages,
         pdf_data=pdf_data,
-        pdf_filename=pdf_filename
+        pdf_filename=pdf_filename,
+        web_search=web_search,
     )
 
     # Format results
@@ -316,7 +319,8 @@ Title:"""
 async def run_full_council(
     user_query: str,
     pdf_data: Optional[str] = None,
-    pdf_filename: Optional[str] = None
+    pdf_filename: Optional[str] = None,
+    web_search: bool = False,
 ) -> Tuple[List, List, Dict, Dict]:
     """
     Run the complete 3-stage council process.
@@ -325,6 +329,7 @@ async def run_full_council(
         user_query: The user's question
         pdf_data: Optional base64-encoded PDF data
         pdf_filename: Optional filename for the PDF
+        web_search: Enable web search for Stage 1 (providers that support it)
 
     Returns:
         Tuple of (stage1_results, stage2_results, stage3_result, metadata)
@@ -333,7 +338,8 @@ async def run_full_council(
     stage1_results, stage1_failed = await stage1_collect_responses(
         user_query,
         pdf_data=pdf_data,
-        pdf_filename=pdf_filename
+        pdf_filename=pdf_filename,
+        web_search=web_search,
     )
 
     # If no models responded successfully, return error

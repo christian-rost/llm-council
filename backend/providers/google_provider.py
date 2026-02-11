@@ -16,6 +16,7 @@ async def query(
     timeout: float = 120.0,
     pdf_data: Optional[str] = None,
     pdf_filename: Optional[str] = None,
+    web_search: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """Query via Google Gemini generateContent API."""
     base_url = PROVIDER_CONFIGS["google"]["base_url"]
@@ -48,6 +49,9 @@ async def query(
         contents.append({"role": gemini_role, "parts": parts})
 
     payload = {"contents": contents}
+
+    if web_search:
+        payload["tools"] = [{"google_search": {}}]
 
     if system_instruction:
         payload["systemInstruction"] = {
