@@ -11,12 +11,16 @@ const PROVIDER_OPTIONS = [
   { value: 'mistral', label: 'Mistral' },
 ];
 
+const KNOWN_PROVIDERS = PROVIDER_OPTIONS.map(p => p.value);
+
 function parseModelId(modelId) {
   if (modelId.includes(':')) {
-    const [provider, model] = modelId.split(':', 2);
-    return { provider, model };
+    const [prefix, ...rest] = modelId.split(':');
+    if (KNOWN_PROVIDERS.includes(prefix)) {
+      return { provider: prefix, model: rest.join(':') };
+    }
   }
-  // Legacy format: "vendor/model" → openrouter
+  // Legacy format or OpenRouter with suffix (e.g. "openai/gpt-5.1:online")
   return { provider: 'openrouter', model: modelId };
 }
 

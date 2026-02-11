@@ -208,10 +208,18 @@ function App() {
     }
   };
 
+  const KNOWN_PROVIDERS = ['openrouter', 'openai', 'google', 'anthropic', 'xai', 'mistral'];
   const getModelDisplayName = (modelId) => {
     if (!modelId) return 'Unknown';
     let name = modelId;
-    if (name.includes(':')) name = name.split(':')[1];
+    // Strip known provider prefix (e.g. "openai:gpt-5.1" → "gpt-5.1")
+    // But keep OpenRouter suffixes (e.g. "openai/gpt-5.1:online" stays intact)
+    if (name.includes(':')) {
+      const prefix = name.split(':')[0];
+      if (KNOWN_PROVIDERS.includes(prefix)) {
+        name = name.split(':').slice(1).join(':');
+      }
+    }
     if (name.includes('/')) name = name.split('/').pop();
     return name;
   };

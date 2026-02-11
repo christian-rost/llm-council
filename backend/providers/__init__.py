@@ -15,13 +15,15 @@ def parse_model_id(model_id: str) -> tuple[str, str]:
     """Parse a model ID into (provider, bare_model).
 
     Formats:
-        "provider:model"        → ("provider", "model")
-        "vendor/model" (no ':') → ("openrouter", "vendor/model")   # backward compat
+        "provider:model"              → ("provider", "model")
+        "vendor/model"                → ("openrouter", "vendor/model")
+        "vendor/model:online"         → ("openrouter", "vendor/model:online")  # OpenRouter suffix
     """
     if ":" in model_id:
         provider, bare_model = model_id.split(":", 1)
-        return provider, bare_model
-    # Legacy format — treat as OpenRouter
+        if provider in PROVIDER_CONFIGS:
+            return provider, bare_model
+    # Legacy format or OpenRouter with suffixes (e.g. "openai/gpt-5.1:online")
     return "openrouter", model_id
 
 
