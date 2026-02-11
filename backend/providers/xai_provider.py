@@ -69,7 +69,12 @@ async def query(
                 )
                 return None
             data = response.json()
-            logger.info(f"{provider} Responses API raw response keys: {list(data.keys())}")
+            logger.info(
+                f"{provider} Responses API response details for {model}: "
+                f"reasoning={data.get('reasoning')}, "
+                f"tool_choice={data.get('tool_choice')}, "
+                f"tools={data.get('tools')}"
+            )
 
             # Check if web search was actually invoked
             output_types = [item.get("type") for item in data.get("output", [])]
