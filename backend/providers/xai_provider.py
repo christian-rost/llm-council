@@ -59,6 +59,11 @@ async def query(
         "tools": [{"type": tool_type}],
     }
 
+    # OpenAI reasoning models (gpt-5, gpt-5.2) default to reasoning.effort="none"
+    # which prevents tool invocation. Set to "low" to enable web search.
+    if provider == "openai":
+        payload["reasoning"] = {"effort": "low"}
+
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(url, headers=headers, json=payload)
