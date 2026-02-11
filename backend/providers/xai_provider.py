@@ -5,7 +5,6 @@ web_search tool. Without web_search, these providers use the
 OpenAI-compatible chat/completions endpoint (openai_provider.py).
 """
 
-import json
 import logging
 import httpx
 from typing import List, Dict, Any, Optional
@@ -49,8 +48,6 @@ async def query(
         "tool_choice": "required",
     }
 
-    logger.info(f"{provider} Responses API request for {model}: {json.dumps(payload, default=str)[:500]}")
-
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(url, headers=headers, json=payload)
@@ -68,8 +65,7 @@ async def query(
             search_performed = "web_search_call" in output_types
             logger.info(
                 f"{provider} Responses API for {model}: "
-                f"web_search={'YES' if search_performed else 'NO'}, "
-                f"output_types={output_types}"
+                f"web_search={'YES' if search_performed else 'NO'}"
             )
 
             # Extract text from output items

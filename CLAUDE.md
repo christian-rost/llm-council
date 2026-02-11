@@ -51,6 +51,8 @@ Web search can be enabled globally via Admin Dashboard toggle (stored in `app_se
 
 **Responses API Routing**: When `web_search=True`, OpenAI and xAI requests are routed to `xai_provider.py` (Responses API at `/v1/responses`) instead of `openai_provider.py` (Chat Completions). Without web search, both continue to use the OpenAI-compatible chat/completions endpoint.
 
+**Important**: `tool_choice: "required"` is set in the Responses API payload to force web search invocation. Without it, models like gpt-5.2 autonomously decide whether to search and often skip it for queries they can answer from training data.
+
 ### Backend Structure (`backend/`)
 
 **`backend/providers/`** — Multi-Provider Abstraction Layer
