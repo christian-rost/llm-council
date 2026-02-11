@@ -23,6 +23,9 @@ from .council import run_full_council, generate_conversation_title, stage1_colle
 from .providers import query_model as provider_query_model
 from .providers.base import PROVIDER_CONFIGS
 
+# Configure logging for backend modules (default is WARNING, we need INFO)
+logging.basicConfig(level=logging.INFO)
+
 logger = logging.getLogger(__name__)
 
 # Rate limiter setup
