@@ -3,10 +3,6 @@
 Both OpenAI and xAI support the Responses API (/v1/responses) with a
 web_search tool. Without web_search, these providers use the
 OpenAI-compatible chat/completions endpoint (openai_provider.py).
-
-Note: OpenAI reasoning models (gpt-5, gpt-5.2, etc.) require
-reasoning.effort >= "low" for web_search to work. Default "none"
-disables tool use.
 """
 
 import logging
@@ -58,11 +54,6 @@ async def query(
         "input": input_value,
         "tools": [{"type": tool_type}],
     }
-
-    # OpenAI reasoning models (gpt-5, gpt-5.2) default to reasoning.effort="none"
-    # which prevents tool invocation. Set to "medium" to enable web search.
-    if provider == "openai":
-        payload["reasoning"] = {"effort": "medium"}
 
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
