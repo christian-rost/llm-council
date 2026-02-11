@@ -46,6 +46,7 @@ async def query(
         "model": model,
         "input": input_messages,
         "tools": [{"type": "web_search"}],
+        "tool_choice": "required",
     }
 
     logger.info(f"{provider} Responses API request for {model}: {json.dumps(payload, default=str)[:500]}")
