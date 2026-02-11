@@ -42,27 +42,27 @@ async def query(
         "Content-Type": "application/json",
     }
 
-    # Convert messages to the Responses API input format
-    input_messages = []
-    for msg in messages:
-        input_messages.append({
-            "role": msg["role"],
-            "content": msg["content"],
-        })
-
     # OpenAI uses "web_search_preview", xAI uses "web_search"
     tool_type = "web_search_preview" if provider == "openai" else "web_search"
 
+    # Build input: use simple string for single user message (matches official examples),
+    # otherwise use messages array
+    user_messages = [m for m in messages if m["role"] == "user"]
+    if len(messages) == 1 and messages[0]["role"] == "user":
+        input_value = messages[0]["content"]
+    else:
+        input_value = [{"role": m["role"], "content": m["content"]} for m in messages]
+
     payload = {
         "model": model,
-        "input": input_messages,
+        "input": input_value,
         "tools": [{"type": tool_type}],
     }
 
     # OpenAI reasoning models (gpt-5, gpt-5.2) default to reasoning.effort="none"
-    # which prevents tool invocation. Set to "low" to enable web search.
+    # which prevents tool invocation. Set to "medium" to enable web search.
     if provider == "openai":
-        payload["reasoning"] = {"effort": "low"}
+        payload["reasoning"] = {"effort": "medium"}
 
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
