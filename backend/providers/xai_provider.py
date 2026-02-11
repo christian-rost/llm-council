@@ -73,6 +73,15 @@ async def query(
                 return None
             data = response.json()
 
+            # Check if web search was actually invoked
+            output_types = [item.get("type") for item in data.get("output", [])]
+            search_performed = "web_search_call" in output_types
+            logger.info(
+                f"{provider} Responses API for {model}: "
+                f"web_search={'YES' if search_performed else 'NO'}, "
+                f"output_types={output_types}"
+            )
+
             # Extract text from output items
             text_parts = []
             for item in data.get("output", []):
