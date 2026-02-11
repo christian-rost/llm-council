@@ -20,6 +20,8 @@ from slowapi.errors import RateLimitExceeded
 
 from . import storage, user_storage, auth, settings, api_keys
 from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
+from .providers import query_model as provider_query_model
+from .providers.base import PROVIDER_CONFIGS
 
 logger = logging.getLogger(__name__)
 
@@ -139,6 +141,18 @@ class CouncilRequest(BaseModel):
             raise ValueError('Question must not be empty')
         if len(v) > 50000:
             raise ValueError('Question must not exceed 50000 characters')
+        return v.strip()
+
+
+class SetProviderKeyRequest(BaseModel):
+    """Request to set a provider API key."""
+    api_key: str
+
+    @field_validator('api_key')
+    @classmethod
+    def validate_api_key(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError('API key must not be empty')
         return v.strip()
 
 
@@ -706,6 +720,77 @@ async def delete_api_key_endpoint(
     if not success:
         raise HTTPException(status_code=404, detail="API key not found")
     return {"status": "deactivated"}
+
+
+# ── Admin: Provider Management ─────────────────────────────────────────────
+
+@app.get("/api/admin/providers")
+async def list_providers(admin: dict = Depends(auth.get_current_admin)):
+    """List all providers with their configuration status (admin only)."""
+    return settings.get_all_provider_keys_status()
+
+
+@app.put("/api/admin/providers/{provider}/key")
+async def set_provider_key(
+    provider: str,
+    body: SetProviderKeyRequest,
+    admin: dict = Depends(auth.get_current_admin),
+):
+    """Set (or update) an API key for a provider (admin only)."""
+    if provider not in PROVIDER_CONFIGS:
+        raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
+    try:
+        settings.set_provider_api_key(provider, body.api_key)
+        return {"status": "saved", "provider": provider}
+    except Exception as e:
+        logger.error(f"Error saving provider key for {provider}: {e}")
+        raise HTTPException(status_code=500, detail="Error saving provider key")
+
+
+@app.delete("/api/admin/providers/{provider}/key")
+async def delete_provider_key(
+    provider: str,
+    admin: dict = Depends(auth.get_current_admin),
+):
+    """Delete a provider API key from the database (admin only)."""
+    if provider not in PROVIDER_CONFIGS:
+        raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
+    success = settings.delete_provider_api_key(provider)
+    if not success:
+        raise HTTPException(status_code=404, detail="No database key found for this provider")
+    return {"status": "deleted", "provider": provider}
+
+
+@app.post("/api/admin/providers/{provider}/test")
+async def test_provider(
+    provider: str,
+    admin: dict = Depends(auth.get_current_admin),
+):
+    """Test connectivity to a provider with a minimal request (admin only)."""
+    if provider not in PROVIDER_CONFIGS:
+        raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
+
+    # Build a test model ID
+    test_models = {
+        "openrouter": "openrouter:openai/gpt-4.1-nano",
+        "openai": "openai:gpt-4.1-nano",
+        "google": "google:gemini-2.0-flash-lite",
+        "anthropic": "anthropic:claude-haiku-4-5-20251001",
+        "xai": "xai:grok-3-mini-fast",
+        "mistral": "mistral:mistral-small-latest",
+    }
+    model_id = test_models.get(provider)
+    if not model_id:
+        raise HTTPException(status_code=400, detail="No test model defined for this provider")
+
+    messages = [{"role": "user", "content": "Reply with only the word: OK"}]
+    try:
+        result = await provider_query_model(model_id, messages, timeout=30.0)
+        if result and result.get("content"):
+            return {"status": "ok", "provider": provider, "response": result["content"][:100]}
+        return {"status": "error", "provider": provider, "message": "No response received"}
+    except Exception as e:
+        return {"status": "error", "provider": provider, "message": str(e)}
 
 
 if __name__ == "__main__":

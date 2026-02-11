@@ -2,15 +2,45 @@ import { useState, useEffect } from 'react';
 import { api } from '../api';
 import './AdminDashboard.css';
 
+const PROVIDER_OPTIONS = [
+  { value: 'openrouter', label: 'OpenRouter' },
+  { value: 'openai', label: 'OpenAI' },
+  { value: 'google', label: 'Google (Gemini)' },
+  { value: 'anthropic', label: 'Anthropic' },
+  { value: 'xai', label: 'xAI (Grok)' },
+  { value: 'mistral', label: 'Mistral' },
+];
+
+function parseModelId(modelId) {
+  if (modelId.includes(':')) {
+    const [provider, model] = modelId.split(':', 2);
+    return { provider, model };
+  }
+  // Legacy format: "vendor/model" → openrouter
+  return { provider: 'openrouter', model: modelId };
+}
+
+function buildModelId(provider, model) {
+  if (provider === 'openrouter') return model; // Keep legacy format for openrouter
+  return `${provider}:${model}`;
+}
+
 function AdminDashboard() {
   const [activeSection, setActiveSection] = useState('models');
   const [chairmanModel, setChairmanModel] = useState('');
   const [councilModels, setCouncilModels] = useState([]);
-  const [newModel, setNewModel] = useState('');
+  const [newModelProvider, setNewModelProvider] = useState('openrouter');
+  const [newModelName, setNewModelName] = useState('');
+  const [chairmanProvider, setChairmanProvider] = useState('openrouter');
+  const [chairmanModelName, setChairmanModelName] = useState('');
   const [users, setUsers] = useState([]);
   const [apiKeys, setApiKeys] = useState([]);
   const [newKeyName, setNewKeyName] = useState('');
   const [createdKey, setCreatedKey] = useState(null);
+  const [providers, setProviders] = useState([]);
+  const [providerKeyInputs, setProviderKeyInputs] = useState({});
+  const [testingProvider, setTestingProvider] = useState(null);
+  const [savingProviderKey, setSavingProviderKey] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
@@ -19,13 +49,19 @@ function AdminDashboard() {
     loadSettings();
     loadUsers();
     loadApiKeys();
+    loadProviders();
   }, []);
 
   const loadSettings = async () => {
     try {
       const data = await api.getAdminSettings();
-      setChairmanModel(data.chairman_model || '');
+      const chairman = data.chairman_model || '';
+      setChairmanModel(chairman);
       setCouncilModels(data.council_models || []);
+      // Parse chairman into provider + model
+      const parsed = parseModelId(chairman);
+      setChairmanProvider(parsed.provider);
+      setChairmanModelName(parsed.model);
     } catch (error) {
       setMessage({ type: 'error', text: 'Failed to load settings' });
     } finally {
@@ -48,6 +84,59 @@ function AdminDashboard() {
       setApiKeys(data);
     } catch (error) {
       console.error('Failed to load API keys:', error);
+    }
+  };
+
+  const loadProviders = async () => {
+    try {
+      const data = await api.getAdminProviders();
+      setProviders(data);
+    } catch (error) {
+      console.error('Failed to load providers:', error);
+    }
+  };
+
+  const saveProviderKey = async (provider) => {
+    const key = providerKeyInputs[provider]?.trim();
+    if (!key) return;
+    setSavingProviderKey(provider);
+    try {
+      await api.setAdminProviderKey(provider, key);
+      setProviderKeyInputs({ ...providerKeyInputs, [provider]: '' });
+      setMessage({ type: 'success', text: `API key for ${provider} saved` });
+      loadProviders();
+    } catch (error) {
+      setMessage({ type: 'error', text: `Failed to save key: ${error.message}` });
+    } finally {
+      setSavingProviderKey(null);
+    }
+  };
+
+  const deleteProviderKey = async (provider, providerName) => {
+    if (!confirm(`Delete database API key for "${providerName}"?`)) return;
+    try {
+      await api.deleteAdminProviderKey(provider);
+      setMessage({ type: 'success', text: `Database key for ${providerName} deleted` });
+      loadProviders();
+    } catch (error) {
+      setMessage({ type: 'error', text: `Failed to delete key: ${error.message}` });
+    }
+  };
+
+  const testProvider = async (provider) => {
+    setTestingProvider(provider);
+    setMessage(null);
+    try {
+      const result = await api.testAdminProvider(provider);
+      if (result.status === 'ok') {
+        setMessage({ type: 'success', text: `${provider}: Connection successful` });
+      } else {
+        setMessage({ type: 'error', text: `${provider}: ${result.message || 'Test failed'}` });
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: `${provider}: ${error.message}` });
+    } finally {
+      setTestingProvider(null);
     }
   };
 
@@ -88,11 +177,14 @@ function AdminDashboard() {
   const saveSettings = async () => {
     setSaving(true);
     setMessage(null);
+    // Build chairman model ID from provider + model
+    const fullChairman = buildModelId(chairmanProvider, chairmanModelName);
     try {
       await api.updateAdminSettings({
-        chairman_model: chairmanModel,
+        chairman_model: fullChairman,
         council_models: councilModels,
       });
+      setChairmanModel(fullChairman);
       setMessage({ type: 'success', text: 'Settings saved successfully' });
     } catch (error) {
       setMessage({ type: 'error', text: 'Failed to save settings' });
@@ -104,18 +196,19 @@ function AdminDashboard() {
   const MAX_COUNCIL_MODELS = 9;
 
   const addCouncilModel = () => {
-    const trimmed = newModel.trim();
-    if (!trimmed) return;
+    const trimmedName = newModelName.trim();
+    if (!trimmedName) return;
     if (councilModels.length >= MAX_COUNCIL_MODELS) {
       setMessage({ type: 'error', text: `Maximum ${MAX_COUNCIL_MODELS} council models allowed` });
       return;
     }
-    if (councilModels.includes(trimmed)) {
+    const fullId = buildModelId(newModelProvider, trimmedName);
+    if (councilModels.includes(fullId)) {
       setMessage({ type: 'error', text: 'Model already in the list' });
       return;
     }
-    setCouncilModels([...councilModels, trimmed]);
-    setNewModel('');
+    setCouncilModels([...councilModels, fullId]);
+    setNewModelName('');
     setMessage(null);
   };
 
@@ -139,6 +232,18 @@ function AdminDashboard() {
       e.preventDefault();
       addCouncilModel();
     }
+  };
+
+  const getDisplayModelId = (modelId) => {
+    const { provider, model } = parseModelId(modelId);
+    const providerLabel = PROVIDER_OPTIONS.find(p => p.value === provider)?.label || provider;
+    return { provider, providerLabel, model };
+  };
+
+  // Helper: check if a provider has a configured API key
+  const isProviderConfigured = (providerId) => {
+    const p = providers.find((pr) => pr.provider === providerId);
+    return p?.configured || false;
   };
 
   if (loading) {
@@ -172,6 +277,12 @@ function AdminDashboard() {
           Model Configuration
         </button>
         <button
+          className={`admin-tab ${activeSection === 'providers' ? 'active' : ''}`}
+          onClick={() => { setActiveSection('providers'); loadProviders(); }}
+        >
+          Providers
+        </button>
+        <button
           className={`admin-tab ${activeSection === 'users' ? 'active' : ''}`}
           onClick={() => setActiveSection('users')}
         >
@@ -190,38 +301,67 @@ function AdminDashboard() {
           <div className="admin-form-group">
             <label>Chairman / Moderator</label>
             <p className="admin-hint">The model that synthesizes the final answer in Stage 3.</p>
-            <input
-              type="text"
-              value={chairmanModel}
-              onChange={(e) => setChairmanModel(e.target.value)}
-              placeholder="e.g. google/gemini-3-pro-preview"
-            />
+            <div className="model-input-row">
+              <select
+                value={chairmanProvider}
+                onChange={(e) => setChairmanProvider(e.target.value)}
+                className="provider-select"
+              >
+                {PROVIDER_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}{isProviderConfigured(opt.value) ? '' : ' (no key)'}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="text"
+                value={chairmanModelName}
+                onChange={(e) => setChairmanModelName(e.target.value)}
+                placeholder={chairmanProvider === 'openrouter' ? 'e.g. google/gemini-3-pro-preview' : 'e.g. gemini-3-pro-preview'}
+              />
+            </div>
           </div>
 
           <div className="admin-form-group">
             <label>Council Models</label>
             <p className="admin-hint">Models that provide individual responses (Stage 1) and peer reviews (Stage 2).</p>
             <div className="council-models-list">
-              {councilModels.map((model) => (
-                <div key={model} className="council-model-item">
-                  <span>{model}</span>
-                  <button
-                    className="remove-model-btn"
-                    onClick={() => removeCouncilModel(model)}
-                    title="Remove model"
-                  >
-                    x
-                  </button>
-                </div>
-              ))}
+              {councilModels.map((model) => {
+                const { providerLabel, model: bareModel } = getDisplayModelId(model);
+                return (
+                  <div key={model} className="council-model-item">
+                    <span className="model-provider-badge">{providerLabel}</span>
+                    <span className="model-name">{bareModel}</span>
+                    <button
+                      className="remove-model-btn"
+                      onClick={() => removeCouncilModel(model)}
+                      title="Remove model"
+                    >
+                      x
+                    </button>
+                  </div>
+                );
+              })}
             </div>
-            <div className="add-model-row">
+            <div className="model-input-row">
+              <select
+                value={newModelProvider}
+                onChange={(e) => setNewModelProvider(e.target.value)}
+                className="provider-select"
+                disabled={councilModels.length >= MAX_COUNCIL_MODELS}
+              >
+                {PROVIDER_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}{isProviderConfigured(opt.value) ? '' : ' (no key)'}
+                  </option>
+                ))}
+              </select>
               <input
                 type="text"
-                value={newModel}
-                onChange={(e) => setNewModel(e.target.value)}
+                value={newModelName}
+                onChange={(e) => setNewModelName(e.target.value)}
                 onKeyPress={handleNewModelKeyPress}
-                placeholder="e.g. openai/gpt-5.1"
+                placeholder={newModelProvider === 'openrouter' ? 'e.g. openai/gpt-5.1' : 'e.g. gpt-5.1'}
                 disabled={councilModels.length >= MAX_COUNCIL_MODELS}
               />
               <button
@@ -242,6 +382,65 @@ function AdminDashboard() {
           >
             {saving ? 'Saving...' : 'Save Settings'}
           </button>
+        </div>
+      )}
+
+      {activeSection === 'providers' && (
+        <div className="admin-section">
+          <p className="admin-hint" style={{ marginBottom: 16 }}>
+            Configure API keys for direct provider access. Environment variable keys are used as fallback — database keys take priority.
+          </p>
+          <div className="provider-cards">
+            {providers.map((p) => (
+              <div key={p.provider} className="provider-card">
+                <div className="provider-card-header">
+                  <span className="provider-card-name">{p.name}</span>
+                  <span className={`status-badge ${p.configured ? 'active' : 'inactive'}`}>
+                    {p.configured ? p.source === 'database' ? 'DB Key' : 'Env Var' : 'Not configured'}
+                  </span>
+                </div>
+                <div className="provider-card-body">
+                  <div className="provider-key-row">
+                    <input
+                      type="password"
+                      value={providerKeyInputs[p.provider] || ''}
+                      onChange={(e) =>
+                        setProviderKeyInputs({ ...providerKeyInputs, [p.provider]: e.target.value })
+                      }
+                      placeholder="Enter API key..."
+                      className="provider-key-input"
+                    />
+                    <button
+                      className="add-model-btn"
+                      onClick={() => saveProviderKey(p.provider)}
+                      disabled={savingProviderKey === p.provider || !providerKeyInputs[p.provider]?.trim()}
+                    >
+                      {savingProviderKey === p.provider ? '...' : 'Save'}
+                    </button>
+                  </div>
+                  <div className="provider-card-actions">
+                    {p.source === 'database' && (
+                      <button
+                        className="delete-user-btn"
+                        onClick={() => deleteProviderKey(p.provider, p.name)}
+                      >
+                        Delete DB Key
+                      </button>
+                    )}
+                    {p.configured && (
+                      <button
+                        className="test-provider-btn"
+                        onClick={() => testProvider(p.provider)}
+                        disabled={testingProvider === p.provider}
+                      >
+                        {testingProvider === p.provider ? 'Testing...' : 'Test'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

@@ -106,6 +106,32 @@
   border-color: var(--color-primary);
 }
 
+/* Model Input Row (Provider Dropdown + Text) */
+.model-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.model-input-row input {
+  flex: 1;
+}
+
+.provider-select {
+  padding: 10px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+  background: var(--color-white);
+  cursor: pointer;
+  min-width: 160px;
+  transition: border-color 0.2s;
+}
+
+.provider-select:focus {
+  border-color: var(--color-primary);
+}
+
 /* Council Models List */
 .council-models-list {
   display: flex;
@@ -117,12 +143,27 @@
 .council-model-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 10px;
   padding: 10px 14px;
   background: var(--color-gray-light);
   border-radius: 8px;
-  font-family: monospace;
   font-size: 14px;
+}
+
+.model-provider-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--color-dark);
+  color: var(--color-white);
+  white-space: nowrap;
+}
+
+.council-model-item .model-name {
+  flex: 1;
+  font-family: monospace;
 }
 
 .remove-model-btn {
@@ -324,4 +365,88 @@
   height: 200px;
   gap: 16px;
   color: var(--color-gray);
+}
+
+/* Provider Cards */
+.provider-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.provider-card {
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.provider-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: var(--color-gray-light);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.provider-card-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-black);
+}
+
+.provider-card-body {
+  padding: 14px 16px;
+}
+
+.provider-key-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.provider-key-input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: monospace;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.provider-key-input:focus {
+  border-color: var(--color-primary);
+}
+
+.provider-card-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.test-provider-btn {
+  padding: 6px 14px;
+  background: none;
+  border: 1px solid var(--color-border);
+  color: var(--color-black);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.test-provider-btn:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.test-provider-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.add-model-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

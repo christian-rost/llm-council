@@ -1,7 +1,7 @@
 """3-stage XQT5AIs orchestration with PDF support."""
 
 from typing import List, Dict, Any, Tuple, Optional
-from .openrouter import query_models_parallel, query_model
+from .providers import query_models_parallel, query_model
 from .settings import get_council_models, get_chairman_model
 
 

@@ -4,9 +4,9 @@ This file contains technical details, architectural decisions, and important imp
 
 ## Current State
 
-- **Branch**: `version1` (aktive Entwicklung)
+- **Branch**: `version2-divModels` (Multi-Provider Support)
 - **Produktname**: XQT5AIs (umbenannt von "LLM Council")
-- **Deployment**: Coolify auf VPS
+- **Deployment**: Coolify auf VPS (Backend + Frontend in separaten Containern)
   - Frontend: https://5ais.xqtfive.com
   - Backend: Separate Instanz
 - **Datenbank**: Supabase (ersetzt JSON-Dateien seit version1)
@@ -15,13 +15,44 @@ This file contains technical details, architectural decisions, and important imp
 
 XQT5AIs is a 3-stage deliberation system where multiple LLMs collaboratively answer user questions. The key innovation is anonymized peer review in Stage 2, preventing models from playing favorites.
 
+**Multi-Provider Support** (version2): Models can be called via OpenRouter OR directly via provider APIs (OpenAI, Google Gemini, Anthropic, xAI, Mistral).
+
 ## Architecture
+
+### Multi-Provider System
+
+**Model-ID-Format**: `provider:modellname` (e.g., `openai:gpt-5.1`, `google:gemini-3-pro-preview`)
+**Backward-Compat**: IDs with `/` without `:` (e.g., `openai/gpt-5.1`) are automatically treated as `openrouter:openai/gpt-5.1`.
+
+**Supported Providers**:
+| Provider | API Type | Base URL |
+|----------|----------|----------|
+| `openrouter` | OpenRouter (default) | `openrouter.ai/api/v1/chat/completions` |
+| `openai` | OpenAI-compatible | `api.openai.com/v1/chat/completions` |
+| `google` | Gemini generateContent | `generativelanguage.googleapis.com/v1beta` |
+| `anthropic` | Anthropic Messages | `api.anthropic.com/v1/messages` |
+| `xai` | OpenAI-compatible | `api.x.ai/v1/chat/completions` |
+| `mistral` | OpenAI-compatible | `api.mistral.ai/v1/chat/completions` |
+
+**API Key Priority**: DB (encrypted, Fernet) > Environment Variable
 
 ### Backend Structure (`backend/`)
 
+**`backend/providers/`** — Multi-Provider Abstraction Layer
+- **`__init__.py`**: Registry + Dispatcher
+  - `parse_model_id(model_id)` → `(provider, bare_model)` with backward-compat
+  - `get_api_key(provider)` → DB first, then env var fallback
+  - `query_model(model_id, messages, ...)` → Dispatches to correct provider
+  - `query_models_parallel(models, messages, ...)` → Parallel queries via `asyncio.gather()`
+- **`base.py`**: `PROVIDER_CONFIGS` dict, Fernet encryption helpers (`encrypt_value`, `decrypt_value`, key derived from `JWT_SECRET`)
+- **`openrouter.py`**: OpenRouter-specific handler (PDF via file-parser plugin)
+- **`openai_provider.py`**: OpenAI-compatible handler (works for OpenAI, xAI, Mistral; PDF as base64 image_url)
+- **`anthropic_provider.py`**: Anthropic Messages API (system param, content blocks, PDF as document block, `max_tokens: 8192`)
+- **`google_provider.py`**: Gemini generateContent (role mapping, inline_data for PDF)
+
 **`config.py`**
 - Contains `COUNCIL_MODELS` and `CHAIRMAN_MODEL` as fallback defaults
-- Uses environment variables: `OPENROUTER_API_KEY`, `SUPABASE_URL`, `SUPABASE_KEY`
+- Uses environment variables: `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `ANTHROPIC_API_KEY`, `XAI_API_KEY`, `MISTRAL_API_KEY`, `SUPABASE_URL`, `SUPABASE_KEY`
 - Backend runs on **port 8001**
 - JWT configuration: `JWT_SECRET`, `JWT_ALGORITHM`, `JWT_EXPIRATION_HOURS`
 - Admin credentials: `admin_user`, `admin_pw` (environment variables)
@@ -35,6 +66,11 @@ XQT5AIs is a 3-stage deliberation system where multiple LLMs collaboratively ans
 - App settings stored in `app_settings` table (key-value, JSONB)
 - `get_setting(key, default)` / `set_setting(key, value)` (upsert)
 - `get_chairman_model()` / `get_council_models()` with config.py fallbacks
+- **Provider Key Management**:
+  - `get_provider_api_key(provider)` → Decrypts from DB
+  - `set_provider_api_key(provider, api_key)` → Encrypts + upsert
+  - `delete_provider_api_key(provider)` → Soft-delete
+  - `get_all_provider_keys_status()` → Status of all providers (no keys returned)
 
 **`user_storage.py`**
 - **Supabase-based** user storage in `users` table
@@ -48,13 +84,11 @@ XQT5AIs is a 3-stage deliberation system where multiple LLMs collaboratively ans
 - `get_current_admin()`: Dependency for admin-only routes
 - `is_admin_user()`: Check if user is admin
 
-**`openrouter.py`**
-- `query_model()`: Single async model query with logging
-- `query_models_parallel()`: Parallel queries using `asyncio.gather()`
-- Returns dict with 'content' and optional 'reasoning_details'
-- Graceful degradation: returns None on failure, continues with successful responses
+**`openrouter.py`** — Backward-compatibility shim
+- Re-exports `query_model` and `query_models_parallel` from `providers` package
 
 **`council.py`** - The Core Logic
+- Imports from `providers` (not `openrouter` directly)
 - `stage1_collect_responses()`: Parallel queries to all council models → returns `(results, failed_models)`
 - `stage2_collect_rankings()`: Anonymized peer rankings → returns `(results, label_to_model, failed_models)`
 - `stage3_synthesize_final()`: Chairman synthesizes final answer
@@ -84,6 +118,7 @@ XQT5AIs is a 3-stage deliberation system where multiple LLMs collaboratively ans
 - Admin endpoints: `/api/admin/users`, `/api/admin/users/{id}`, etc.
 - **Admin settings endpoints**: `/api/admin/settings` (GET/PUT)
 - **Admin API key endpoints**: `/api/admin/api-keys` (POST/GET/DELETE)
+- **Admin provider endpoints**: `/api/admin/providers` (GET), `/api/admin/providers/{provider}/key` (PUT/DELETE), `/api/admin/providers/{provider}/test` (POST)
 - **Public REST API**: `/api/v1/council` (POST) — stateless council deliberation via API key
 - Input validation on registration (username 3-32 chars, EmailStr, password min 8 chars)
 - Internal errors not exposed to clients
@@ -103,6 +138,7 @@ XQT5AIs is a 3-stage deliberation system where multiple LLMs collaboratively ans
 - **View toggle**: `chat` / `admin` (admin-only)
 - Admin button in sidebar for `is_admin` users
 - **Failed models UI**: `failedModels` state tracks Stage 1/2 failures; renders warning banners + greyed-out tabs
+- `getModelDisplayName()`: Handles both `provider:model` and `provider/model` format
 
 **`auth.jsx`**
 - Authentication context provider
@@ -113,15 +149,18 @@ XQT5AIs is a 3-stage deliberation system where multiple LLMs collaboratively ans
 - API client with auth headers
 - `sendMessageStream()`: SSE streaming with callbacks — `onStage1(data, failedModels)`, `onStage2(data, metadata)`
 - Admin methods: `getAdminSettings()`, `updateAdminSettings()`, `getAdminUsers()`, `deleteAdminUser()`
+- **Provider methods**: `getAdminProviders()`, `setAdminProviderKey()`, `deleteAdminProviderKey()`, `testAdminProvider()`
 
 **`components/Login.jsx`**
 - Login and registration forms
 - Tab-based UI for switching between login/register
 
 **`components/AdminDashboard.jsx`**
-- **Model Configuration**: Chairman/Moderator input, Council models list with add/remove
+- **Model Configuration**: Provider dropdown + model name input for Chairman and Council models
+- **Providers Tab**: Provider cards with status (DB/Env/Not configured), key input, save/delete/test buttons
 - **User Management**: User table with delete functionality
-- Tab-based section switching
+- **API Keys Tab**: API key management
+- Tab-based section switching (Models, Providers, Users, API Keys)
 
 **Styling (`*.css`)**
 - **XQT5 Corporate Design**:
@@ -148,9 +187,13 @@ app_settings (key VARCHAR PK, value JSONB, updated_at)
 
 -- API Keys (public REST API)
 api_keys (id UUID PK, name, key_hash, key_prefix, is_active, rate_limit, usage_count, created_at, last_used_at)
+
+-- Provider API Keys (encrypted, for direct provider access)
+provider_api_keys (provider VARCHAR(50) PK, api_key_encrypted TEXT, is_active BOOLEAN, updated_at)
 ```
 
 Schema file: `backend/schema.sql` (run in Supabase SQL Editor)
+**Migration**: Run the `provider_api_keys` CREATE TABLE statement in Supabase SQL Editor for existing installations.
 
 ## Environment Variables
 
@@ -159,6 +202,11 @@ Schema file: `backend/schema.sql` (run in Supabase SQL Editor)
 | Variable | Beschreibung | Pflicht |
 |----------|--------------|---------|
 | `OPENROUTER_API_KEY` | API-Key for OpenRouter | Ja |
+| `OPENAI_API_KEY` | API-Key for OpenAI (direct) | Nein |
+| `GOOGLE_API_KEY` | API-Key for Google Gemini (direct) | Nein |
+| `ANTHROPIC_API_KEY` | API-Key for Anthropic (direct) | Nein |
+| `XAI_API_KEY` | API-Key for xAI/Grok (direct) | Nein |
+| `MISTRAL_API_KEY` | API-Key for Mistral (direct) | Nein |
 | `JWT_SECRET` | Secret for JWT tokens (min. 32 chars recommended) | **Ja** |
 | `SUPABASE_URL` | Supabase project URL | **Ja** |
 | `SUPABASE_KEY` | Supabase service_role key | **Ja** |
@@ -167,6 +215,7 @@ Schema file: `backend/schema.sql` (run in Supabase SQL Editor)
 | `CORS_ORIGINS` | Allowed origins (comma-separated) | Nein (Default: localhost) |
 
 **Important**: `JWT_SECRET`, `SUPABASE_URL`, and `SUPABASE_KEY` are **required**. Backend will not start without them (RuntimeError).
+Provider API keys can also be managed via Admin Dashboard (encrypted in DB, takes priority over env vars).
 
 ### Frontend
 
@@ -188,8 +237,22 @@ Schema file: `backend/schema.sql` (run in Supabase SQL Editor)
 10. **Rate-Limiting**: slowapi for brute-force and DoS protection
 11. **Supabase RLS**: Database-level security (configurable in Supabase dashboard)
 12. **API Key Authentication**: Bcrypt-hashed keys with prefix-lookup for the public REST API
+13. **Encrypted Provider Keys**: Fernet encryption (derived from JWT_SECRET) for provider API keys stored in DB
 
 ## Key Design Decisions
+
+### Multi-Provider Dispatch
+- Model IDs use `provider:model` format for explicit provider selection
+- Backward-compatible: legacy `vendor/model` format auto-routes to OpenRouter
+- OpenAI-compatible providers (OpenAI, xAI, Mistral) share one handler with different base URLs
+- Google Gemini and Anthropic have dedicated handlers due to unique API formats
+- PDF handling differs per provider (OpenRouter: file-parser plugin, OpenAI-compat: image_url, Anthropic: document block, Gemini: inline_data)
+
+### API Key Storage
+- **Dual source**: Environment variables (Coolify config) + encrypted DB storage (Admin UI)
+- DB keys take priority over env vars (allows runtime overrides without restart)
+- Fernet encryption key derived from `JWT_SECRET` via SHA-256 (no additional secret needed)
+- Admin UI never returns actual keys, only status (configured/source)
 
 ### Stage 2 Prompt Format
 ```
@@ -207,7 +270,7 @@ Schema file: `backend/schema.sql` (run in Supabase SQL Editor)
 
 ### Dynamic Model Configuration
 - Chairman and Council models are stored in `app_settings` table
-- Configurable via Admin Dashboard UI
+- Configurable via Admin Dashboard UI (Provider dropdown + model name)
 - Fallback to `config.py` defaults if DB settings not found
 - Changes take effect immediately (no restart needed)
 
@@ -228,6 +291,7 @@ All backend modules use relative imports (e.g., `from .config import ...`). Run 
 - `passlib[bcrypt]` - Required for password hashing
 - `slowapi` - Required for rate limiting
 - `supabase` - Required for database access
+- `cryptography` - Required for Fernet encryption (transitive via `python-jose[cryptography]`)
 
 ## Common Gotchas
 
@@ -239,13 +303,19 @@ All backend modules use relative imports (e.g., `from .config import ...`). Run 
 6. **slowapi Request-Parameter**: Rate-limited endpoints must have `request: Request` as first param, Pydantic body as `body: ModelName`
 7. **Supabase env vars missing**: Backend won't start without `SUPABASE_URL` and `SUPABASE_KEY`
 8. **Schema must be applied first**: Run `backend/schema.sql` in Supabase SQL Editor before first start
+9. **provider_api_keys table**: Must be created manually for existing installations (run `CREATE TABLE provider_api_keys ...` from schema.sql)
+10. **Provider model format**: Direct provider models use `provider:model` (e.g., `openai:gpt-5.1`), NOT the OpenRouter format `openai/gpt-5.1`
 
 ## Data Flow Summary
 
 ```
 User Query
     ↓
-Stage 1: Parallel queries → [individual responses] + [failed_models]
+parse_model_id() → (provider, bare_model)
+    ↓
+get_api_key(provider) → DB key or env var
+    ↓
+Stage 1: Parallel queries via provider-specific handlers → [individual responses] + [failed_models]
     ↓
 Stage 2: Anonymize → Parallel ranking queries → [evaluations + parsed rankings] + [failed_models]
     ↓
@@ -264,27 +334,34 @@ Frontend: Display with tabs + warning banners for failed models
 llm-council/
 ├── backend/
 │   ├── __init__.py
+│   ├── providers/           # Multi-Provider Abstraction Layer
+│   │   ├── __init__.py      # Registry, dispatcher, query_model(), query_models_parallel()
+│   │   ├── base.py          # PROVIDER_CONFIGS, Fernet encryption helpers
+│   │   ├── openrouter.py    # OpenRouter handler (PDF file-parser plugin)
+│   │   ├── openai_provider.py  # OpenAI/xAI/Mistral handler
+│   │   ├── anthropic_provider.py  # Anthropic Messages API handler
+│   │   └── google_provider.py     # Google Gemini generateContent handler
 │   ├── api_keys.py      # API key management (public REST API)
 │   ├── auth.py          # JWT authentication
-│   ├── config.py        # Configuration & env vars
-│   ├── council.py       # 3-stage logic (dynamic models)
+│   ├── config.py        # Configuration & env vars (incl. provider API keys)
+│   ├── council.py       # 3-stage logic (imports from providers)
 │   ├── database.py      # Supabase client
-│   ├── main.py          # FastAPI app + admin settings + public API endpoints
-│   ├── openrouter.py    # LLM API client
-│   ├── schema.sql       # Database schema (run in Supabase)
-│   ├── settings.py      # App settings CRUD
+│   ├── main.py          # FastAPI app + admin settings + provider endpoints + public API
+│   ├── openrouter.py    # Backward-compat shim (re-exports from providers)
+│   ├── schema.sql       # Database schema (incl. provider_api_keys table)
+│   ├── settings.py      # App settings + provider key CRUD + encryption
 │   ├── storage.py       # Conversation storage (Supabase)
 │   └── user_storage.py  # User storage (Supabase + bcrypt)
 ├── frontend/
 │   ├── src/
-│   │   ├── api.js       # API client (+ admin methods)
+│   │   ├── api.js       # API client (+ admin + provider methods)
 │   │   ├── auth.jsx     # Auth context
-│   │   ├── App.jsx      # Main app (+ admin view toggle)
+│   │   ├── App.jsx      # Main app (+ admin view toggle + multi-format model display)
 │   │   ├── App.css      # Main styles
 │   │   ├── index.css    # CSS variables
 │   │   └── components/
-│   │       ├── AdminDashboard.jsx  # Admin UI
-│   │       ├── AdminDashboard.css  # Admin styles
+│   │       ├── AdminDashboard.jsx  # Admin UI (Models + Providers + Users + API Keys)
+│   │       ├── AdminDashboard.css  # Admin styles (+ provider cards)
 │   │       └── Login.jsx           # Login/Register
 │   └── index.html
 ├── CLAUDE.md            # This file
@@ -300,6 +377,8 @@ llm-council/
 - [x] Failed models transparency (warning banners + greyed-out tabs)
 - [x] Public REST API (`/api/v1/council`) with API key authentication
 - [x] Admin UI for API key management
+- [x] Multi-Provider support (OpenAI, Google, Anthropic, xAI, Mistral + OpenRouter)
+- [x] Provider API key management (Admin UI + encrypted DB storage)
 - [ ] Password reset via email
 - [ ] Token refresh mechanism
 - [ ] Unit Tests

@@ -355,4 +355,52 @@ export const api = {
     if (!response.ok) throw new Error('Failed to delete API key');
     return response.json();
   },
+
+  /**
+   * Admin: Get all providers with status
+   */
+  async getAdminProviders() {
+    const response = await fetch(`${API_BASE}/api/admin/providers`, {
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to fetch providers');
+    return response.json();
+  },
+
+  /**
+   * Admin: Set API key for a provider
+   */
+  async setAdminProviderKey(provider, apiKey) {
+    const response = await fetch(`${API_BASE}/api/admin/providers/${provider}/key`, {
+      method: 'PUT',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ api_key: apiKey }),
+    });
+    if (!response.ok) throw new Error('Failed to save provider key');
+    return response.json();
+  },
+
+  /**
+   * Admin: Delete API key for a provider
+   */
+  async deleteAdminProviderKey(provider) {
+    const response = await fetch(`${API_BASE}/api/admin/providers/${provider}/key`, {
+      method: 'DELETE',
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to delete provider key');
+    return response.json();
+  },
+
+  /**
+   * Admin: Test connectivity to a provider
+   */
+  async testAdminProvider(provider) {
+    const response = await fetch(`${API_BASE}/api/admin/providers/${provider}/test`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to test provider');
+    return response.json();
+  },
 };

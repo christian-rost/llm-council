@@ -62,3 +62,11 @@ CREATE TABLE api_keys (
 );
 
 CREATE INDEX idx_api_keys_prefix ON api_keys(key_prefix);
+
+-- Provider API Keys (encrypted, for direct provider access)
+CREATE TABLE provider_api_keys (
+    provider VARCHAR(50) PRIMARY KEY,
+    api_key_encrypted TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);

@@ -210,8 +210,10 @@ function App() {
 
   const getModelDisplayName = (modelId) => {
     if (!modelId) return 'Unknown';
-    const parts = modelId.split('/');
-    return parts[parts.length - 1];
+    let name = modelId;
+    if (name.includes(':')) name = name.split(':')[1];
+    if (name.includes('/')) name = name.split('/').pop();
+    return name;
   };
 
   // Extract the final response text from various message formats
