@@ -51,14 +51,7 @@ async def query(
     payload = {"contents": contents}
 
     if web_search:
-        payload["tools"] = [{
-            "googleSearchRetrieval": {
-                "dynamicRetrievalConfig": {
-                    "mode": "MODE_DYNAMIC",
-                    "dynamicThreshold": 0.0
-                }
-            }
-        }]
+        payload["tools"] = [{"google_search": {}}]
 
     if system_instruction:
         payload["systemInstruction"] = {

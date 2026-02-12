@@ -44,7 +44,7 @@ Web search can be enabled globally via Admin Dashboard toggle (stored in `app_se
 |----------|---------------------|-------|
 | `openrouter` | `:online` suffix appended to model name | Existing mechanism |
 | `openai` | `/v1/responses` endpoint with `tools: [{"type": "web_search"}]` | Responses API (chat completions `web_search_options` only works with search-specific models) |
-| `google` | `googleSearchRetrieval` with `dynamicRetrievalConfig` (`dynamicThreshold: 0.0`) in generateContent payload | Google Search grounding, threshold 0.0 forces search |
+| `google` | `tools: [{"google_search": {}}]` in generateContent payload | Google Search grounding (model decides autonomously whether to search) |
 | `xai` | `/v1/responses` endpoint with `tools: [{"type": "web_search"}]` | Responses API (chat completions web search deprecated) |
 | `anthropic` | Server-side `web_search_20250305` tool in Messages API | Same endpoint, tool added to payload |
 | `mistral` | Not available | - |
@@ -65,7 +65,7 @@ Web search can be enabled globally via Admin Dashboard toggle (stored in `app_se
 - **`openrouter.py`**: OpenRouter-specific handler (PDF via file-parser plugin)
 - **`openai_provider.py`**: OpenAI-compatible handler (works for OpenAI, xAI, Mistral; PDF as base64 image_url)
 - **`anthropic_provider.py`**: Anthropic Messages API (system param, content blocks, PDF as document block, `max_tokens: 8192`, `web_search_20250305` tool for web search)
-- **`google_provider.py`**: Gemini generateContent (role mapping, inline_data for PDF, `googleSearchRetrieval` with `dynamicThreshold: 0.0` for web search)
+- **`google_provider.py`**: Gemini generateContent (role mapping, inline_data for PDF, `google_search` tool for web search)
 - **`xai_provider.py`**: Responses API handler for OpenAI + xAI web search (`/v1/responses` with `web_search` tool)
 
 **`config.py`**
@@ -359,7 +359,7 @@ llm-council/
 │   │   ├── openrouter.py    # OpenRouter handler (PDF file-parser plugin)
 │   │   ├── openai_provider.py  # OpenAI/xAI/Mistral chat completions handler
 │   │   ├── anthropic_provider.py  # Anthropic Messages API handler
-│   │   ├── google_provider.py     # Google Gemini generateContent handler (+ googleSearchRetrieval tool)
+│   │   ├── google_provider.py     # Google Gemini generateContent handler (+ google_search tool)
 │   │   └── xai_provider.py       # Responses API handler for OpenAI + xAI web search
 │   ├── api_keys.py      # API key management (public REST API)
 │   ├── auth.py          # JWT authentication
