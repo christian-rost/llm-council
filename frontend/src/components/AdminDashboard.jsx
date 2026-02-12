@@ -151,7 +151,7 @@ function AdminDashboard() {
     if (!trimmed) return;
     try {
       const data = await api.createAdminApiKey(trimmed);
-      setCreatedKey(data.api_key);
+      setCreatedKey(data.key);
       setNewKeyName('');
       loadApiKeys();
       setMessage({ type: 'success', text: 'API key created' });
