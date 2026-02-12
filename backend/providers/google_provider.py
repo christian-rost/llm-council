@@ -58,6 +58,8 @@ async def query(
             "parts": [{"text": system_instruction}]
         }
 
+    logger.info(f"Google for {model}: web_search={'YES' if web_search else 'NO'}")
+
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(url, json=payload)
