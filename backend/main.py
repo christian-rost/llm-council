@@ -450,8 +450,10 @@ async def send_message(
         storage_metadata
     )
 
-    # Token tracking
+    # Token tracking (admin user has id="admin" which is not a valid UUID, so skip)
     uid = current_user.get("id")
+    if uid == "admin":
+        uid = None
     if metadata.get("stage1_raw_responses"):
         store_stage_usage(conversation_id, message_id, "stage1", metadata["stage1_raw_responses"], user_id=uid)
     if metadata.get("stage2_raw_responses"):
@@ -549,8 +551,10 @@ async def send_message_stream(
                 metadata
             )
 
-            # Token tracking
+            # Token tracking (admin user has id="admin" which is not a valid UUID, so skip)
             uid = current_user.get("id")
+            if uid == "admin":
+                uid = None
             if stage1_raw:
                 store_stage_usage(conversation_id, message_id, "stage1", stage1_raw, user_id=uid)
             if stage2_raw:
