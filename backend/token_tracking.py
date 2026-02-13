@@ -128,11 +128,10 @@ def store_usage(
     usage: Dict[str, Any],
     source: str = 'chat',
     api_key_id: Optional[str] = None,
+    user_id: Optional[str] = None,
 ) -> None:
     """Store token usage in database."""
     try:
-        # uses module-level supabase singleton
-
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
         total_tokens = usage.get("total_tokens", 0) or (prompt_tokens + completion_tokens)
@@ -161,6 +160,8 @@ def store_usage(
             data["message_id"] = message_id
         if api_key_id:
             data["api_key_id"] = api_key_id
+        if user_id:
+            data["user_id"] = user_id
 
         supabase.table("token_usage").insert(data).execute()
 
@@ -177,6 +178,7 @@ def store_usage_from_response(
     response: Optional[Dict[str, Any]],
     source: str = 'chat',
     api_key_id: Optional[str] = None,
+    user_id: Optional[str] = None,
 ) -> None:
     """Store usage from a provider response.
 
@@ -188,6 +190,7 @@ def store_usage_from_response(
         response: The provider response dict (may contain 'usage' key)
         source: 'chat' or 'api'
         api_key_id: API key ID for public API calls
+        user_id: User ID for per-user tracking
     """
     if not response:
         return
@@ -209,6 +212,7 @@ def store_usage_from_response(
         usage=usage,
         source=source,
         api_key_id=api_key_id,
+        user_id=user_id,
     )
 
 
@@ -219,6 +223,7 @@ def store_stage_usage(
     raw_responses: Dict[str, Any],
     source: str = 'chat',
     api_key_id: Optional[str] = None,
+    user_id: Optional[str] = None,
 ) -> None:
     """Store usage for all model responses in a stage.
 
@@ -229,11 +234,12 @@ def store_stage_usage(
         raw_responses: Dict of model_id -> full response dict
         source: 'chat' or 'api'
         api_key_id: API key ID for public API calls
+        user_id: User ID for per-user tracking
     """
     for model_id, response in raw_responses.items():
         store_usage_from_response(
             conversation_id, message_id, model_id, stage, response,
-            source=source, api_key_id=api_key_id,
+            source=source, api_key_id=api_key_id, user_id=user_id,
         )
 
 
@@ -310,6 +316,7 @@ def get_usage_stats(
                 "by_provider": [],
                 "by_model": [],
                 "by_stage": [],
+                "by_user": [],
                 "daily": [],
             }
 
@@ -341,6 +348,10 @@ def get_usage_stats(
             "date": "", "requests": 0, "tokens": 0, "cost": 0.0
         })
 
+        user_stats = defaultdict(lambda: {
+            "requests": 0, "tokens": 0, "cost": 0.0
+        })
+
         for r in records:
             provider = r.get("provider", "unknown")
             model = r.get("model", "unknown")
@@ -348,6 +359,7 @@ def get_usage_stats(
             created_at = r.get("created_at", "")
             tokens = r.get("total_tokens", 0)
             cost = r.get("estimated_cost_usd", 0) or 0
+            record_user_id = r.get("user_id")
 
             # Provider stats
             provider_stats[provider]["requests"] += 1
@@ -375,6 +387,12 @@ def get_usage_stats(
             daily_stats[date_key]["requests"] += 1
             daily_stats[date_key]["tokens"] += tokens
             daily_stats[date_key]["cost"] += cost
+
+            # User stats
+            uid = record_user_id or "_anonymous"
+            user_stats[uid]["requests"] += 1
+            user_stats[uid]["tokens"] += tokens
+            user_stats[uid]["cost"] += cost
 
         # Convert to sorted lists
         by_provider = [
@@ -423,6 +441,27 @@ def get_usage_stats(
             for k, v in sorted(daily_stats.items())
         ]
 
+        # Resolve user IDs to usernames
+        real_user_ids = [uid for uid in user_stats if uid != "_anonymous"]
+        username_map = {}
+        if real_user_ids:
+            try:
+                users_resp = supabase.table("users").select("id,username").in_("id", real_user_ids).execute()
+                username_map = {u["id"]: u["username"] for u in users_resp.data}
+            except Exception:
+                pass  # Fallback to showing IDs
+
+        by_user = [
+            {
+                "user_id": k if k != "_anonymous" else None,
+                "username": username_map.get(k, "Admin" if k == "admin" else ("Anonymous/API" if k == "_anonymous" else k[:8])),
+                "requests": v["requests"],
+                "tokens": v["tokens"],
+                "estimated_cost_usd": round(v["cost"], 6),
+            }
+            for k, v in sorted(user_stats.items(), key=lambda x: x[1]["cost"], reverse=True)
+        ]
+
         return {
             "summary": {
                 "total_requests": total_requests,
@@ -435,6 +474,7 @@ def get_usage_stats(
             "by_provider": by_provider,
             "by_model": by_model,
             "by_stage": by_stage,
+            "by_user": by_user,
             "daily": daily,
             "date_range": {
                 "start": start_date,

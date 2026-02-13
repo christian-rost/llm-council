@@ -76,6 +76,7 @@ CREATE TABLE token_usage (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     conversation_id UUID REFERENCES conversations(id) ON DELETE CASCADE,  -- nullable for API calls
     message_id UUID REFERENCES messages(id) ON DELETE CASCADE,            -- nullable for API calls
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,  -- nullable, for per-user stats
     api_key_id UUID,                          -- API key reference for public API calls
     source VARCHAR(10) DEFAULT 'chat' CHECK (source IN ('chat', 'api')),
     model VARCHAR(100) NOT NULL,

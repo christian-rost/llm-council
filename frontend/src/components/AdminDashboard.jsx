@@ -743,6 +743,32 @@ function AdminDashboard() {
                 </div>
               )}
 
+              {tokenUsage.by_user && tokenUsage.by_user.length > 0 && (
+                <div className="token-table-section">
+                  <h4>By User</h4>
+                  <table className="users-table">
+                    <thead>
+                      <tr>
+                        <th>User</th>
+                        <th>Requests</th>
+                        <th>Tokens</th>
+                        <th>Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tokenUsage.by_user.map((u) => (
+                        <tr key={u.user_id || '_anon'}>
+                          <td>{u.username}</td>
+                          <td>{u.requests.toLocaleString()}</td>
+                          <td>{u.tokens.toLocaleString()}</td>
+                          <td>${u.estimated_cost_usd.toFixed(4)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
               {tokenUsage.by_stage.length > 0 && (
                 <div className="token-table-section">
                   <h4>By Stage</h4>

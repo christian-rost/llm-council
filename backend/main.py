@@ -451,12 +451,13 @@ async def send_message(
     )
 
     # Token tracking
+    uid = current_user.get("id")
     if metadata.get("stage1_raw_responses"):
-        store_stage_usage(conversation_id, message_id, "stage1", metadata["stage1_raw_responses"])
+        store_stage_usage(conversation_id, message_id, "stage1", metadata["stage1_raw_responses"], user_id=uid)
     if metadata.get("stage2_raw_responses"):
-        store_stage_usage(conversation_id, message_id, "stage2", metadata["stage2_raw_responses"])
+        store_stage_usage(conversation_id, message_id, "stage2", metadata["stage2_raw_responses"], user_id=uid)
     if metadata.get("stage3_raw_response"):
-        store_usage_from_response(conversation_id, message_id, stage3_result["model"], "stage3", metadata["stage3_raw_response"])
+        store_usage_from_response(conversation_id, message_id, stage3_result["model"], "stage3", metadata["stage3_raw_response"], user_id=uid)
 
     # Return the complete response with metadata (without raw responses)
     return {
@@ -549,12 +550,13 @@ async def send_message_stream(
             )
 
             # Token tracking
+            uid = current_user.get("id")
             if stage1_raw:
-                store_stage_usage(conversation_id, message_id, "stage1", stage1_raw)
+                store_stage_usage(conversation_id, message_id, "stage1", stage1_raw, user_id=uid)
             if stage2_raw:
-                store_stage_usage(conversation_id, message_id, "stage2", stage2_raw)
+                store_stage_usage(conversation_id, message_id, "stage2", stage2_raw, user_id=uid)
             if stage3_raw_response:
-                store_usage_from_response(conversation_id, message_id, stage3_result["model"], "stage3", stage3_raw_response)
+                store_usage_from_response(conversation_id, message_id, stage3_result["model"], "stage3", stage3_raw_response, user_id=uid)
 
             # Send completion event
             yield f"data: {json.dumps({'type': 'complete'})}\n\n"
