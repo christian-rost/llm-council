@@ -22,6 +22,7 @@ from . import storage, user_storage, auth, settings, api_keys
 from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
 from .providers import query_model as provider_query_model
 from .providers.base import PROVIDER_CONFIGS
+from .token_tracking import store_stage_usage, store_usage_from_response, get_usage_stats
 
 # Configure logging for backend modules (default is WARNING, we need INFO)
 logging.basicConfig(level=logging.INFO)
@@ -434,21 +435,35 @@ async def send_message(
         web_search=web_search,
     )
 
+    # Strip raw responses from metadata before storing (not needed in DB)
+    storage_metadata = {k: v for k, v in metadata.items() if not k.endswith('_raw_responses') and k != 'stage3_raw_response'}
+
+    # Strip raw_response from stage3_result before storing/returning
+    stage3_result.pop("raw_response", None)
+
     # Add assistant message with all stages
-    storage.add_assistant_message(
+    message_id = storage.add_assistant_message(
         conversation_id,
         stage1_results,
         stage2_results,
         stage3_result,
-        metadata
+        storage_metadata
     )
 
-    # Return the complete response with metadata
+    # Token tracking
+    if metadata.get("stage1_raw_responses"):
+        store_stage_usage(conversation_id, message_id, "stage1", metadata["stage1_raw_responses"])
+    if metadata.get("stage2_raw_responses"):
+        store_stage_usage(conversation_id, message_id, "stage2", metadata["stage2_raw_responses"])
+    if metadata.get("stage3_raw_response"):
+        store_usage_from_response(conversation_id, message_id, stage3_result["model"], "stage3", metadata["stage3_raw_response"])
+
+    # Return the complete response with metadata (without raw responses)
     return {
         "stage1": stage1_results,
         "stage2": stage2_results,
         "stage3": stage3_result,
-        "metadata": metadata
+        "metadata": storage_metadata
     }
 
 
@@ -491,7 +506,7 @@ async def send_message_stream(
             # Stage 1: Collect responses (with optional PDF)
             web_search = settings.get_web_search_enabled()
             yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
-            stage1_results, stage1_failed = await stage1_collect_responses(
+            stage1_results, stage1_failed, stage1_raw = await stage1_collect_responses(
                 body.content,
                 pdf_data=body.pdf_data,
                 pdf_filename=body.pdf_filename,
@@ -501,7 +516,7 @@ async def send_message_stream(
 
             # Stage 2: Collect rankings (no PDF needed - working with text responses)
             yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
-            stage2_results, label_to_model, stage2_failed = await stage2_collect_rankings(body.content, stage1_results)
+            stage2_results, label_to_model, stage2_failed, stage2_raw = await stage2_collect_rankings(body.content, stage1_results)
             aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
             metadata = {
                 "label_to_model": label_to_model,
@@ -514,6 +529,8 @@ async def send_message_stream(
             # Stage 3: Synthesize final answer (no PDF needed - working with stage results)
             yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
             stage3_result = await stage3_synthesize_final(body.content, stage1_results, stage2_results)
+            # Strip raw_response before sending to client
+            stage3_raw_response = stage3_result.pop("raw_response", None)
             yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result})}\n\n"
 
             # Wait for title generation if it was started
@@ -523,13 +540,21 @@ async def send_message_stream(
                 yield f"data: {json.dumps({'type': 'title_complete', 'data': {'title': title}})}\n\n"
 
             # Save complete assistant message
-            storage.add_assistant_message(
+            message_id = storage.add_assistant_message(
                 conversation_id,
                 stage1_results,
                 stage2_results,
                 stage3_result,
                 metadata
             )
+
+            # Token tracking
+            if stage1_raw:
+                store_stage_usage(conversation_id, message_id, "stage1", stage1_raw)
+            if stage2_raw:
+                store_stage_usage(conversation_id, message_id, "stage2", stage2_raw)
+            if stage3_raw_response:
+                store_usage_from_response(conversation_id, message_id, stage3_result["model"], "stage3", stage3_raw_response)
 
             # Send completion event
             yield f"data: {json.dumps({'type': 'complete'})}\n\n"
@@ -633,6 +658,23 @@ async def update_admin_settings(
     return {"status": "updated"}
 
 
+@app.get("/api/admin/token-usage")
+async def get_token_usage(
+    request: Request,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    source: Optional[str] = None,
+    admin: dict = Depends(auth.get_current_admin),
+):
+    """Get token usage statistics (admin only)."""
+    try:
+        stats = get_usage_stats(start_date=start_date, end_date=end_date, source=source)
+        return stats
+    except Exception as e:
+        logger.error(f"Error fetching token usage: {e}")
+        raise HTTPException(status_code=500, detail="Error fetching token usage statistics")
+
+
 # ── Public REST API ──────────────────────────────────────────────────────────
 
 @app.post("/api/v1/council")
@@ -663,6 +705,18 @@ async def public_council(
     # Check if all models failed
     if not stage1_results:
         raise HTTPException(status_code=503, detail="All council models failed")
+
+    # Token tracking for API calls
+    api_key_id = key_record.get("id")
+    if metadata.get("stage1_raw_responses"):
+        store_stage_usage(None, None, "stage1", metadata["stage1_raw_responses"], source='api', api_key_id=api_key_id)
+    if metadata.get("stage2_raw_responses"):
+        store_stage_usage(None, None, "stage2", metadata["stage2_raw_responses"], source='api', api_key_id=api_key_id)
+    if metadata.get("stage3_raw_response"):
+        store_usage_from_response(None, None, stage3_result["model"], "stage3", metadata["stage3_raw_response"], source='api', api_key_id=api_key_id)
+
+    # Strip internal data
+    stage3_result.pop("raw_response", None)
 
     processing_time = round(time.time() - start_time, 2)
 

@@ -147,7 +147,8 @@ def add_assistant_message(
     if metadata:
         msg_data["metadata"] = metadata
 
-    supabase.table("messages").insert(msg_data).execute()
+    result = supabase.table("messages").insert(msg_data).execute()
+    return result.data[0]["id"]
 
 
 def update_conversation_title(conversation_id: str, title: str):

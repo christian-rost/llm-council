@@ -403,4 +403,19 @@ export const api = {
     if (!response.ok) throw new Error('Failed to test provider');
     return response.json();
   },
+
+  /**
+   * Admin: Get token usage statistics
+   */
+  async getAdminTokenUsage(startDate, endDate, source) {
+    const params = new URLSearchParams();
+    if (startDate) params.set('start_date', startDate);
+    if (endDate) params.set('end_date', endDate);
+    if (source) params.set('source', source);
+    const response = await fetch(`${API_BASE}/api/admin/token-usage?${params}`, {
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to fetch token usage');
+    return response.json();
+  },
 };

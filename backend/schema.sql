@@ -70,3 +70,25 @@ CREATE TABLE provider_api_keys (
     is_active BOOLEAN DEFAULT TRUE,
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Token Usage Tracking
+CREATE TABLE token_usage (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id UUID REFERENCES conversations(id) ON DELETE CASCADE,  -- nullable for API calls
+    message_id UUID REFERENCES messages(id) ON DELETE CASCADE,            -- nullable for API calls
+    api_key_id UUID,                          -- API key reference for public API calls
+    source VARCHAR(10) DEFAULT 'chat' CHECK (source IN ('chat', 'api')),
+    model VARCHAR(100) NOT NULL,
+    provider VARCHAR(50) NOT NULL,
+    stage VARCHAR(10) NOT NULL CHECK (stage IN ('stage1', 'stage2', 'stage3', 'title')),
+    prompt_tokens INTEGER DEFAULT 0,
+    completion_tokens INTEGER DEFAULT 0,
+    total_tokens INTEGER DEFAULT 0,
+    estimated_cost_usd DECIMAL(10, 6),
+    cached_tokens INTEGER DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_token_usage_conversation ON token_usage(conversation_id);
+CREATE INDEX idx_token_usage_created ON token_usage(created_at);
+CREATE INDEX idx_token_usage_provider ON token_usage(provider, created_at);

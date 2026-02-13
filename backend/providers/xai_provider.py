@@ -92,9 +92,20 @@ async def query(
 
             content = "\n".join(text_parts) if text_parts else None
 
+            # Extract usage data from usage field
+            usage = data.get("usage", {})
+            input_tokens = usage.get("input_tokens", 0)
+            output_tokens = usage.get("output_tokens", 0)
+
             return {
                 "content": content,
                 "reasoning_details": None,
+                "usage": {
+                    "prompt_tokens": input_tokens,
+                    "completion_tokens": output_tokens,
+                    "total_tokens": input_tokens + output_tokens,
+                    "cached_tokens": 0,  # Responses API doesn't expose cached tokens
+                }
             }
     except Exception as e:
         logger.error(f"{provider} Responses API error for {model}: {e}")

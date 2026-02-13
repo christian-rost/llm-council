@@ -10,7 +10,7 @@ async def stage1_collect_responses(
     pdf_data: Optional[str] = None,
     pdf_filename: Optional[str] = None,
     web_search: bool = False,
-) -> Tuple[List[Dict[str, Any]], List[str]]:
+) -> Tuple[List[Dict[str, Any]], List[str], Dict[str, Any]]:
     """
     Stage 1: Collect individual responses from all council models.
 
@@ -21,7 +21,7 @@ async def stage1_collect_responses(
         web_search: Enable web search for providers that support it
 
     Returns:
-        Tuple of (results list, failed_models list)
+        Tuple of (results list, failed_models list, raw_responses dict)
     """
     messages = [{"role": "user", "content": user_query}]
 
@@ -38,8 +38,10 @@ async def stage1_collect_responses(
     # Format results
     stage1_results = []
     failed_models = []
+    raw_responses = {}
     for model, response in responses.items():
         if response is not None:
+            raw_responses[model] = response
             stage1_results.append({
                 "model": model,
                 "response": response.get('content', '')
@@ -47,13 +49,13 @@ async def stage1_collect_responses(
         else:
             failed_models.append(model)
 
-    return stage1_results, failed_models
+    return stage1_results, failed_models, raw_responses
 
 
 async def stage2_collect_rankings(
     user_query: str,
     stage1_results: List[Dict[str, Any]]
-) -> Tuple[List[Dict[str, Any]], Dict[str, str], List[str]]:
+) -> Tuple[List[Dict[str, Any]], Dict[str, str], List[str], Dict[str, Any]]:
     """
     Stage 2: Each model ranks the anonymized responses.
 
@@ -62,7 +64,7 @@ async def stage2_collect_rankings(
         stage1_results: Results from Stage 1
 
     Returns:
-        Tuple of (rankings list, label_to_model mapping, failed_models list)
+        Tuple of (rankings list, label_to_model mapping, failed_models list, raw_responses dict)
     """
     # Create anonymized labels for responses (Response A, Response B, etc.)
     labels = [chr(65 + i) for i in range(len(stage1_results))]  # A, B, C, ...
@@ -119,8 +121,10 @@ Now provide your evaluation and ranking:"""
     # Format results
     stage2_results = []
     failed_models = []
+    raw_responses = {}
     for model, response in responses.items():
         if response is not None:
+            raw_responses[model] = response
             full_text = response.get('content', '')
             parsed = parse_ranking_from_text(full_text)
             stage2_results.append({
@@ -131,7 +135,7 @@ Now provide your evaluation and ranking:"""
         else:
             failed_models.append(model)
 
-    return stage2_results, label_to_model, failed_models
+    return stage2_results, label_to_model, failed_models, raw_responses
 
 
 async def stage3_synthesize_final(
@@ -188,12 +192,14 @@ Provide a clear, well-reasoned final answer that represents the council's collec
         # Fallback if chairman fails
         return {
             "model": chairman_model,
-            "response": "Error: Unable to generate final synthesis."
+            "response": "Error: Unable to generate final synthesis.",
+            "raw_response": None,
         }
 
     return {
         "model": chairman_model,
-        "response": response.get('content', '')
+        "response": response.get('content', ''),
+        "raw_response": response,
     }
 
 
@@ -335,7 +341,7 @@ async def run_full_council(
         Tuple of (stage1_results, stage2_results, stage3_result, metadata)
     """
     # Stage 1: Collect individual responses (with PDF if provided)
-    stage1_results, stage1_failed = await stage1_collect_responses(
+    stage1_results, stage1_failed, stage1_raw = await stage1_collect_responses(
         user_query,
         pdf_data=pdf_data,
         pdf_filename=pdf_filename,
@@ -350,7 +356,7 @@ async def run_full_council(
         }, {"stage1_failed": stage1_failed}
 
     # Stage 2: Collect rankings (no PDF needed - working with text responses)
-    stage2_results, label_to_model, stage2_failed = await stage2_collect_rankings(user_query, stage1_results)
+    stage2_results, label_to_model, stage2_failed, stage2_raw = await stage2_collect_rankings(user_query, stage1_results)
 
     # Calculate aggregate rankings
     aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
@@ -368,6 +374,9 @@ async def run_full_council(
         "aggregate_rankings": aggregate_rankings,
         "stage1_failed": stage1_failed,
         "stage2_failed": stage2_failed,
+        "stage1_raw_responses": stage1_raw,
+        "stage2_raw_responses": stage2_raw,
+        "stage3_raw_response": stage3_result.get("raw_response"),
     }
 
     return stage1_results, stage2_results, stage3_result, metadata

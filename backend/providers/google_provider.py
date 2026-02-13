@@ -74,9 +74,19 @@ async def query(
 
             parts = candidates[0].get("content", {}).get("parts", [])
             text_parts = [p.get("text", "") for p in parts if "text" in p]
+
+            # Extract usage data from usageMetadata
+            usage_metadata = data.get("usageMetadata", {})
+
             return {
                 "content": "\n".join(text_parts),
                 "reasoning_details": None,
+                "usage": {
+                    "prompt_tokens": usage_metadata.get("promptTokenCount", 0),
+                    "completion_tokens": usage_metadata.get("candidatesTokenCount", 0),
+                    "total_tokens": usage_metadata.get("totalTokenCount", 0),
+                    "cached_tokens": 0,  # Gemini doesn't have cached tokens like OpenAI
+                }
             }
     except Exception as e:
         logger.error(f"Google error for {model}: {e}")

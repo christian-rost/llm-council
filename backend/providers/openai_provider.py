@@ -70,9 +70,20 @@ async def query(
             data = response.json()
 
             message = data["choices"][0]["message"]
+
+            # Extract usage data
+            usage = data.get("usage", {})
+            prompt_tokens_details = usage.get("prompt_tokens_details", {})
+
             return {
                 "content": message.get("content"),
                 "reasoning_details": message.get("reasoning_details"),
+                "usage": {
+                    "prompt_tokens": usage.get("prompt_tokens", 0),
+                    "completion_tokens": usage.get("completion_tokens", 0),
+                    "total_tokens": usage.get("total_tokens", 0),
+                    "cached_tokens": prompt_tokens_details.get("cached_tokens", 0),
+                }
             }
     except Exception as e:
         logger.error(f"{provider} error for {model}: {e}")

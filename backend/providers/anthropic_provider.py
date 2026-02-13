@@ -99,9 +99,18 @@ async def query(
                     f"web_search={'YES' if search_performed else 'NO'}"
                 )
 
+            # Extract usage data
+            usage = data.get("usage", {})
+
             return {
                 "content": "\n".join(text_parts),
                 "reasoning_details": None,
+                "usage": {
+                    "prompt_tokens": usage.get("input_tokens", 0),
+                    "completion_tokens": usage.get("output_tokens", 0),
+                    "total_tokens": usage.get("input_tokens", 0) + usage.get("output_tokens", 0),
+                    "cached_tokens": usage.get("cache_read_input_tokens", 0),
+                }
             }
     except Exception as e:
         logger.error(f"Anthropic error for {model}: {e}")

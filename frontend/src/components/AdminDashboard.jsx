@@ -46,6 +46,11 @@ function AdminDashboard() {
   const [testingProvider, setTestingProvider] = useState(null);
   const [savingProviderKey, setSavingProviderKey] = useState(null);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const [tokenUsage, setTokenUsage] = useState(null);
+  const [tokenStartDate, setTokenStartDate] = useState('');
+  const [tokenEndDate, setTokenEndDate] = useState('');
+  const [tokenSource, setTokenSource] = useState('');
+  const [tokenLoading, setTokenLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
@@ -99,6 +104,19 @@ function AdminDashboard() {
       setProviders(data);
     } catch (error) {
       console.error('Failed to load providers:', error);
+    }
+  };
+
+  const loadTokenUsage = async (startDate, endDate, source) => {
+    setTokenLoading(true);
+    try {
+      const data = await api.getAdminTokenUsage(startDate || undefined, endDate || undefined, source || undefined);
+      setTokenUsage(data);
+    } catch (error) {
+      console.error('Failed to load token usage:', error);
+      setMessage({ type: 'error', text: 'Failed to load token usage' });
+    } finally {
+      setTokenLoading(false);
     }
   };
 
@@ -300,6 +318,12 @@ function AdminDashboard() {
           onClick={() => { setActiveSection('apikeys'); setCreatedKey(null); }}
         >
           API Keys
+        </button>
+        <button
+          className={`admin-tab ${activeSection === 'tokenusage' ? 'active' : ''}`}
+          onClick={() => { setActiveSection('tokenusage'); if (!tokenUsage) loadTokenUsage(tokenStartDate, tokenEndDate, tokenSource); }}
+        >
+          Token Usage
         </button>
       </div>
 
@@ -591,6 +615,193 @@ function AdminDashboard() {
               )}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {activeSection === 'tokenusage' && (
+        <div className="admin-section">
+          <div className="token-filters">
+            <div className="token-filter-row">
+              <div className="token-filter-group">
+                <label>Start Date</label>
+                <input
+                  type="date"
+                  value={tokenStartDate}
+                  onChange={(e) => setTokenStartDate(e.target.value)}
+                />
+              </div>
+              <div className="token-filter-group">
+                <label>End Date</label>
+                <input
+                  type="date"
+                  value={tokenEndDate}
+                  onChange={(e) => setTokenEndDate(e.target.value)}
+                />
+              </div>
+              <div className="token-filter-group">
+                <label>Source</label>
+                <select
+                  value={tokenSource}
+                  onChange={(e) => setTokenSource(e.target.value)}
+                  className="provider-select"
+                >
+                  <option value="">All</option>
+                  <option value="chat">Chat</option>
+                  <option value="api">API</option>
+                </select>
+              </div>
+              <button
+                className="add-model-btn"
+                onClick={() => loadTokenUsage(tokenStartDate, tokenEndDate, tokenSource)}
+                disabled={tokenLoading}
+                style={{ alignSelf: 'flex-end' }}
+              >
+                {tokenLoading ? 'Loading...' : 'Apply'}
+              </button>
+            </div>
+          </div>
+
+          {tokenLoading && !tokenUsage && (
+            <div className="admin-loading">
+              <div className="spinner"></div>
+              <p>Loading token usage...</p>
+            </div>
+          )}
+
+          {tokenUsage && (
+            <>
+              <div className="token-summary-cards">
+                <div className="token-summary-card">
+                  <div className="token-summary-value">{tokenUsage.summary.total_requests.toLocaleString()}</div>
+                  <div className="token-summary-label">Total Requests</div>
+                </div>
+                <div className="token-summary-card">
+                  <div className="token-summary-value">{tokenUsage.summary.total_tokens.toLocaleString()}</div>
+                  <div className="token-summary-label">Total Tokens</div>
+                </div>
+                <div className="token-summary-card">
+                  <div className="token-summary-value">${tokenUsage.summary.estimated_cost_usd.toFixed(4)}</div>
+                  <div className="token-summary-label">Estimated Cost</div>
+                </div>
+                <div className="token-summary-card">
+                  <div className="token-summary-value">{tokenUsage.summary.total_cached_tokens.toLocaleString()}</div>
+                  <div className="token-summary-label">Cached Tokens</div>
+                </div>
+              </div>
+
+              {tokenUsage.by_provider.length > 0 && (
+                <div className="token-table-section">
+                  <h4>By Provider</h4>
+                  <table className="users-table">
+                    <thead>
+                      <tr>
+                        <th>Provider</th>
+                        <th>Requests</th>
+                        <th>Tokens</th>
+                        <th>Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tokenUsage.by_provider.map((p) => (
+                        <tr key={p.provider}>
+                          <td><span className="model-provider-badge">{p.provider}</span></td>
+                          <td>{p.requests.toLocaleString()}</td>
+                          <td>{p.tokens.toLocaleString()}</td>
+                          <td>${p.estimated_cost_usd.toFixed(4)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {tokenUsage.by_model.length > 0 && (
+                <div className="token-table-section">
+                  <h4>By Model</h4>
+                  <table className="users-table">
+                    <thead>
+                      <tr>
+                        <th>Model</th>
+                        <th>Provider</th>
+                        <th>Requests</th>
+                        <th>Avg Tokens</th>
+                        <th>Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tokenUsage.by_model.map((m) => (
+                        <tr key={m.model}>
+                          <td><code>{m.model}</code></td>
+                          <td><span className="model-provider-badge">{m.provider}</span></td>
+                          <td>{m.requests.toLocaleString()}</td>
+                          <td>{m.avg_tokens.toLocaleString()}</td>
+                          <td>${m.estimated_cost_usd.toFixed(4)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {tokenUsage.by_stage.length > 0 && (
+                <div className="token-table-section">
+                  <h4>By Stage</h4>
+                  <table className="users-table">
+                    <thead>
+                      <tr>
+                        <th>Stage</th>
+                        <th>Requests</th>
+                        <th>Tokens</th>
+                        <th>Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tokenUsage.by_stage.map((s) => (
+                        <tr key={s.stage}>
+                          <td>{s.stage}</td>
+                          <td>{s.requests.toLocaleString()}</td>
+                          <td>{s.tokens.toLocaleString()}</td>
+                          <td>${s.estimated_cost_usd.toFixed(4)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {tokenUsage.daily.length > 0 && (
+                <div className="token-table-section">
+                  <h4>Daily Usage</h4>
+                  <table className="users-table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Requests</th>
+                        <th>Tokens</th>
+                        <th>Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tokenUsage.daily.map((d) => (
+                        <tr key={d.date}>
+                          <td>{d.date}</td>
+                          <td>{d.requests.toLocaleString()}</td>
+                          <td>{d.tokens.toLocaleString()}</td>
+                          <td>${d.estimated_cost_usd.toFixed(4)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {tokenUsage.summary.total_requests === 0 && (
+                <p className="admin-hint" style={{ textAlign: 'center', marginTop: 24 }}>
+                  No token usage data yet. Usage will be tracked automatically when council deliberations are run.
+                </p>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>

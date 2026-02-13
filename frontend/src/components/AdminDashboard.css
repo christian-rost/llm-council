@@ -509,3 +509,86 @@
 .toggle-switch input:checked + .toggle-slider::before {
   transform: translateX(22px);
 }
+
+/* Token Usage */
+.token-filters {
+  margin-bottom: 20px;
+}
+
+.token-filter-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.token-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.token-filter-group label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-gray);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.token-filter-group input[type="date"],
+.token-filter-group select {
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+  background: var(--color-white);
+  transition: border-color 0.2s;
+}
+
+.token-filter-group input[type="date"]:focus,
+.token-filter-group select:focus {
+  border-color: var(--color-primary);
+}
+
+.token-summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.token-summary-card {
+  background: var(--color-gray-light);
+  border-radius: 10px;
+  padding: 16px;
+  text-align: center;
+}
+
+.token-summary-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-dark);
+  margin-bottom: 4px;
+  font-family: monospace;
+}
+
+.token-summary-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-gray);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.token-table-section {
+  margin-bottom: 24px;
+}
+
+.token-table-section h4 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-dark);
+  margin-bottom: 8px;
+}
