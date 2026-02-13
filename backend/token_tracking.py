@@ -5,7 +5,7 @@ import re
 from typing import Dict, Any, Optional
 from decimal import Decimal
 
-from .database import create_client
+from .database import supabase
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +131,7 @@ def store_usage(
 ) -> None:
     """Store token usage in database."""
     try:
-        supabase = create_client()
+        # uses module-level supabase singleton
 
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
@@ -255,7 +255,7 @@ def get_usage_stats(
         Dict with summary stats, provider breakdown, model breakdown, daily stats
     """
     try:
-        supabase = create_client()
+        # uses module-level supabase singleton
 
         # Build base query
         query = supabase.table("token_usage").select("*")
