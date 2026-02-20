@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from typing import List, Dict, Any, Tuple, Optional
-from .providers import query_models_parallel, query_model
+from .providers import query_model
 from .settings import get_council_models, get_chairman_model, get_chairman_fallback_model
 
 logger = logging.getLogger(__name__)
@@ -11,6 +11,103 @@ logger = logging.getLogger(__name__)
 # Stage 3 resilience defaults: initial attempt + retries
 CHAIRMAN_MAX_ATTEMPTS = 3
 CHAIRMAN_RETRY_BACKOFF_SECONDS = 1.0
+
+
+def _normalize_council_slots(raw_models: List[Any]) -> List[Dict[str, str]]:
+    """Normalize council model config into slot objects with primary/fallback."""
+    slots: List[Dict[str, str]] = []
+    for entry in raw_models:
+        if isinstance(entry, str):
+            primary = entry.strip()
+            if primary:
+                slots.append({"primary": primary, "fallback": ""})
+            continue
+        if isinstance(entry, dict):
+            primary = str(entry.get("primary", "")).strip()
+            fallback = str(entry.get("fallback", "")).strip()
+            if primary:
+                slots.append({"primary": primary, "fallback": fallback})
+    return slots
+
+
+async def _query_slots_with_optional_fallback(
+    slots: List[Dict[str, str]],
+    messages: List[Dict[str, Any]],
+    pdf_data: Optional[str] = None,
+    pdf_filename: Optional[str] = None,
+    web_search: bool = False,
+) -> Tuple[List[Dict[str, Any]], List[str], Dict[str, Any]]:
+    """Query council slots; each slot can fail over from primary to fallback."""
+    if not slots:
+        return [], [], {}
+
+    primary_tasks = [
+        query_model(
+            slot["primary"],
+            messages,
+            pdf_data=pdf_data,
+            pdf_filename=pdf_filename,
+            web_search=web_search,
+        )
+        for slot in slots
+    ]
+    primary_responses = await asyncio.gather(*primary_tasks)
+
+    slot_outputs: List[Optional[Dict[str, Any]]] = [None] * len(slots)
+    failed_models: List[str] = []
+    raw_responses: Dict[str, Any] = {}
+
+    fallback_indices: List[int] = []
+    fallback_tasks = []
+
+    for idx, (slot, response) in enumerate(zip(slots, primary_responses)):
+        primary_model = slot["primary"]
+        fallback_model = slot.get("fallback", "")
+        if response is not None:
+            raw_responses[primary_model] = response
+            slot_outputs[idx] = {
+                "model": primary_model,
+                "primary_model": primary_model,
+                "fallback_model": fallback_model or None,
+                "fallback_used": False,
+                "response": response.get("content", ""),
+            }
+            continue
+        if fallback_model and fallback_model != primary_model:
+            fallback_indices.append(idx)
+            fallback_tasks.append(
+                query_model(
+                    fallback_model,
+                    messages,
+                    pdf_data=pdf_data,
+                    pdf_filename=pdf_filename,
+                    web_search=web_search,
+                )
+            )
+        else:
+            failed_models.append(primary_model)
+
+    if fallback_tasks:
+        fallback_responses = await asyncio.gather(*fallback_tasks)
+        for idx, fallback_response in zip(fallback_indices, fallback_responses):
+            slot = slots[idx]
+            primary_model = slot["primary"]
+            fallback_model = slot["fallback"]
+            if fallback_response is not None:
+                raw_responses[fallback_model] = fallback_response
+                slot_outputs[idx] = {
+                    "model": fallback_model,
+                    "primary_model": primary_model,
+                    "fallback_model": fallback_model,
+                    "fallback_used": True,
+                    "response": fallback_response.get("content", ""),
+                }
+            else:
+                failed_models.append(primary_model)
+
+    final_results = [output for output in slot_outputs if output is not None]
+
+    return final_results, failed_models, raw_responses
 
 
 async def _query_with_retries(
@@ -54,29 +151,15 @@ async def stage1_collect_responses(
     """
     messages = [{"role": "user", "content": user_query}]
 
-    # Query all models in parallel (with PDF if provided)
-    council_models = get_council_models()
-    responses = await query_models_parallel(
-        council_models,
+    # Query all council slots (with PDF if provided)
+    council_slots = _normalize_council_slots(get_council_models())
+    stage1_results, failed_models, raw_responses = await _query_slots_with_optional_fallback(
+        council_slots,
         messages,
         pdf_data=pdf_data,
         pdf_filename=pdf_filename,
         web_search=web_search,
     )
-
-    # Format results
-    stage1_results = []
-    failed_models = []
-    raw_responses = {}
-    for model, response in responses.items():
-        if response is not None:
-            raw_responses[model] = response
-            stage1_results.append({
-                "model": model,
-                "response": response.get('content', '')
-            })
-        else:
-            failed_models.append(model)
 
     return stage1_results, failed_models, raw_responses
 
@@ -143,26 +226,25 @@ Now provide your evaluation and ranking:"""
 
     messages = [{"role": "user", "content": ranking_prompt}]
 
-    # Get rankings from all council models in parallel (no PDF needed for ranking)
-    council_models = get_council_models()
-    responses = await query_models_parallel(council_models, messages)
+    # Get rankings from council slots with optional fallback (no PDF needed for ranking)
+    council_slots = _normalize_council_slots(get_council_models())
+    slot_results, failed_models, raw_responses = await _query_slots_with_optional_fallback(
+        council_slots,
+        messages,
+    )
 
-    # Format results
     stage2_results = []
-    failed_models = []
-    raw_responses = {}
-    for model, response in responses.items():
-        if response is not None:
-            raw_responses[model] = response
-            full_text = response.get('content', '')
-            parsed = parse_ranking_from_text(full_text)
-            stage2_results.append({
-                "model": model,
-                "ranking": full_text,
-                "parsed_ranking": parsed
-            })
-        else:
-            failed_models.append(model)
+    for slot_result in slot_results:
+        full_text = slot_result.get("response", "")
+        parsed = parse_ranking_from_text(full_text)
+        stage2_results.append({
+            "model": slot_result["model"],
+            "primary_model": slot_result.get("primary_model"),
+            "fallback_model": slot_result.get("fallback_model"),
+            "fallback_used": slot_result.get("fallback_used", False),
+            "ranking": full_text,
+            "parsed_ranking": parsed
+        })
 
     return stage2_results, label_to_model, failed_models, raw_responses
 

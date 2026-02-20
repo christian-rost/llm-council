@@ -123,7 +123,7 @@ class UpdateSettingsRequest(BaseModel):
     """Request to update admin settings."""
     chairman_model: Optional[str] = None
     chairman_fallback_model: Optional[str] = None
-    council_models: Optional[List[str]] = None
+    council_models: Optional[List[Any]] = None
     web_search_enabled: Optional[bool] = None
 
     @field_validator('council_models')
@@ -131,6 +131,21 @@ class UpdateSettingsRequest(BaseModel):
     def validate_council_models(cls, v):
         if v is not None and len(v) > 9:
             raise ValueError('Maximum 9 council models allowed')
+        if v is not None:
+            for entry in v:
+                if isinstance(entry, str):
+                    if not entry.strip():
+                        raise ValueError('Council model entries must not be empty')
+                    continue
+                if isinstance(entry, dict):
+                    primary = entry.get("primary")
+                    fallback = entry.get("fallback")
+                    if not isinstance(primary, str) or not primary.strip():
+                        raise ValueError('Council slot "primary" must be a non-empty string')
+                    if fallback is not None and not isinstance(fallback, str):
+                        raise ValueError('Council slot "fallback" must be a string')
+                    continue
+                raise ValueError('Council models must be strings or objects with {primary, fallback}')
         return v
 
 

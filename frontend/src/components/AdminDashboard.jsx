@@ -29,6 +29,29 @@ function buildModelId(provider, model) {
   return `${provider}:${model}`;
 }
 
+function normalizeCouncilSlot(entry) {
+  if (typeof entry === 'string') {
+    return { primary: entry, fallback: '' };
+  }
+  if (entry && typeof entry === 'object') {
+    return {
+      primary: entry.primary || '',
+      fallback: entry.fallback || '',
+    };
+  }
+  return { primary: '', fallback: '' };
+}
+
+function serializeCouncilSlot(slot) {
+  if (slot.fallback && slot.fallback.trim()) {
+    return {
+      primary: slot.primary.trim(),
+      fallback: slot.fallback.trim(),
+    };
+  }
+  return slot.primary.trim();
+}
+
 function AdminDashboard() {
   const [activeSection, setActiveSection] = useState('models');
   const [chairmanModel, setChairmanModel] = useState('');
@@ -36,6 +59,8 @@ function AdminDashboard() {
   const [councilModels, setCouncilModels] = useState([]);
   const [newModelProvider, setNewModelProvider] = useState('openrouter');
   const [newModelName, setNewModelName] = useState('');
+  const [newModelFallbackProvider, setNewModelFallbackProvider] = useState('openrouter');
+  const [newModelFallbackName, setNewModelFallbackName] = useState('');
   const [chairmanProvider, setChairmanProvider] = useState('openrouter');
   const [chairmanModelName, setChairmanModelName] = useState('');
   const [chairmanFallbackProvider, setChairmanFallbackProvider] = useState('openrouter');
@@ -72,7 +97,7 @@ function AdminDashboard() {
       const chairmanFallback = data.chairman_fallback_model || '';
       setChairmanModel(chairman);
       setChairmanFallbackModel(chairmanFallback);
-      setCouncilModels(data.council_models || []);
+      setCouncilModels((data.council_models || []).map(normalizeCouncilSlot));
       setWebSearchEnabled(data.web_search_enabled || false);
       // Parse chairman into provider + model
       const parsed = parseModelId(chairman);
@@ -216,7 +241,7 @@ function AdminDashboard() {
       await api.updateAdminSettings({
         chairman_model: fullChairman,
         chairman_fallback_model: fullChairmanFallback,
-        council_models: councilModels,
+        council_models: councilModels.map(serializeCouncilSlot),
         web_search_enabled: webSearchEnabled,
       });
       setChairmanModel(fullChairman);
@@ -238,18 +263,24 @@ function AdminDashboard() {
       setMessage({ type: 'error', text: `Maximum ${MAX_COUNCIL_MODELS} council models allowed` });
       return;
     }
-    const fullId = buildModelId(newModelProvider, trimmedName);
-    if (councilModels.includes(fullId)) {
-      setMessage({ type: 'error', text: 'Model already in the list' });
+    const fullPrimary = buildModelId(newModelProvider, trimmedName);
+    const fullFallback = newModelFallbackName.trim()
+      ? buildModelId(newModelFallbackProvider, newModelFallbackName.trim())
+      : '';
+    const slot = { primary: fullPrimary, fallback: fullFallback };
+    const slotKey = JSON.stringify(serializeCouncilSlot(slot));
+    if (councilModels.some((existing) => JSON.stringify(serializeCouncilSlot(existing)) === slotKey)) {
+      setMessage({ type: 'error', text: 'Model slot already in the list' });
       return;
     }
-    setCouncilModels([...councilModels, fullId]);
+    setCouncilModels([...councilModels, slot]);
     setNewModelName('');
+    setNewModelFallbackName('');
     setMessage(null);
   };
 
-  const removeCouncilModel = (model) => {
-    setCouncilModels(councilModels.filter((m) => m !== model));
+  const removeCouncilModel = (index) => {
+    setCouncilModels(councilModels.filter((_, i) => i !== index));
   };
 
   const deleteUser = async (userId, username) => {
@@ -392,15 +423,20 @@ function AdminDashboard() {
             <label>Council Models</label>
             <p className="admin-hint">Models that provide individual responses (Stage 1) and peer reviews (Stage 2).</p>
             <div className="council-models-list">
-              {councilModels.map((model) => {
-                const { providerLabel, model: bareModel } = getDisplayModelId(model);
+              {councilModels.map((slot, index) => {
+                const { providerLabel, model: bareModel } = getDisplayModelId(slot.primary);
+                const hasFallback = !!slot.fallback;
+                const fallbackDisplay = hasFallback ? getDisplayModelId(slot.fallback) : null;
                 return (
-                  <div key={model} className="council-model-item">
+                  <div key={`${slot.primary}-${slot.fallback || 'none'}-${index}`} className="council-model-item">
                     <span className="model-provider-badge">{providerLabel}</span>
-                    <span className="model-name">{bareModel}</span>
+                    <span className="model-name">
+                      {bareModel}
+                      {hasFallback ? ` -> ${fallbackDisplay.providerLabel}/${fallbackDisplay.model}` : ''}
+                    </span>
                     <button
                       className="remove-model-btn"
-                      onClick={() => removeCouncilModel(model)}
+                      onClick={() => removeCouncilModel(index)}
                       title="Remove model"
                     >
                       x
@@ -437,6 +473,27 @@ function AdminDashboard() {
               >
                 Add
               </button>
+            </div>
+            <div className="model-input-row">
+              <select
+                value={newModelFallbackProvider}
+                onChange={(e) => setNewModelFallbackProvider(e.target.value)}
+                className="provider-select"
+                disabled={councilModels.length >= MAX_COUNCIL_MODELS}
+              >
+                {PROVIDER_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}{isProviderConfigured(opt.value) ? '' : ' (no key)'}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="text"
+                value={newModelFallbackName}
+                onChange={(e) => setNewModelFallbackName(e.target.value)}
+                placeholder={newModelFallbackProvider === 'openrouter' ? 'optional fallback, e.g. openai/gpt-5.1' : 'optional fallback, e.g. gpt-5.1'}
+                disabled={councilModels.length >= MAX_COUNCIL_MODELS}
+              />
             </div>
             <p className="admin-hint">{councilModels.length}/{MAX_COUNCIL_MODELS} Models</p>
           </div>
