@@ -6,7 +6,11 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from .database import supabase
-from .config import COUNCIL_MODELS as DEFAULT_COUNCIL, CHAIRMAN_MODEL as DEFAULT_CHAIRMAN
+from .config import (
+    COUNCIL_MODELS as DEFAULT_COUNCIL,
+    CHAIRMAN_MODEL as DEFAULT_CHAIRMAN,
+    CHAIRMAN_FALLBACK_MODEL as DEFAULT_CHAIRMAN_FALLBACK,
+)
 from .providers.base import PROVIDER_CONFIGS, encrypt_value, decrypt_value
 
 logger = logging.getLogger(__name__)
@@ -30,6 +34,10 @@ def set_setting(key: str, value):
 
 def get_chairman_model() -> str:
     return get_setting("chairman_model", DEFAULT_CHAIRMAN)
+
+
+def get_chairman_fallback_model() -> str:
+    return get_setting("chairman_fallback_model", DEFAULT_CHAIRMAN_FALLBACK)
 
 
 def get_council_models() -> list:

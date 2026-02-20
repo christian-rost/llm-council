@@ -32,11 +32,14 @@ function buildModelId(provider, model) {
 function AdminDashboard() {
   const [activeSection, setActiveSection] = useState('models');
   const [chairmanModel, setChairmanModel] = useState('');
+  const [chairmanFallbackModel, setChairmanFallbackModel] = useState('');
   const [councilModels, setCouncilModels] = useState([]);
   const [newModelProvider, setNewModelProvider] = useState('openrouter');
   const [newModelName, setNewModelName] = useState('');
   const [chairmanProvider, setChairmanProvider] = useState('openrouter');
   const [chairmanModelName, setChairmanModelName] = useState('');
+  const [chairmanFallbackProvider, setChairmanFallbackProvider] = useState('openrouter');
+  const [chairmanFallbackModelName, setChairmanFallbackModelName] = useState('');
   const [users, setUsers] = useState([]);
   const [apiKeys, setApiKeys] = useState([]);
   const [newKeyName, setNewKeyName] = useState('');
@@ -66,13 +69,18 @@ function AdminDashboard() {
     try {
       const data = await api.getAdminSettings();
       const chairman = data.chairman_model || '';
+      const chairmanFallback = data.chairman_fallback_model || '';
       setChairmanModel(chairman);
+      setChairmanFallbackModel(chairmanFallback);
       setCouncilModels(data.council_models || []);
       setWebSearchEnabled(data.web_search_enabled || false);
       // Parse chairman into provider + model
       const parsed = parseModelId(chairman);
       setChairmanProvider(parsed.provider);
       setChairmanModelName(parsed.model);
+      const parsedFallback = parseModelId(chairmanFallback);
+      setChairmanFallbackProvider(parsedFallback.provider);
+      setChairmanFallbackModelName(parsedFallback.model);
     } catch (error) {
       setMessage({ type: 'error', text: 'Failed to load settings' });
     } finally {
@@ -203,13 +211,16 @@ function AdminDashboard() {
     setMessage(null);
     // Build chairman model ID from provider + model
     const fullChairman = buildModelId(chairmanProvider, chairmanModelName);
+    const fullChairmanFallback = buildModelId(chairmanFallbackProvider, chairmanFallbackModelName);
     try {
       await api.updateAdminSettings({
         chairman_model: fullChairman,
+        chairman_fallback_model: fullChairmanFallback,
         council_models: councilModels,
         web_search_enabled: webSearchEnabled,
       });
       setChairmanModel(fullChairman);
+      setChairmanFallbackModel(fullChairmanFallback);
       setMessage({ type: 'success', text: 'Settings saved successfully' });
     } catch (error) {
       setMessage({ type: 'error', text: 'Failed to save settings' });
@@ -349,6 +360,30 @@ function AdminDashboard() {
                 value={chairmanModelName}
                 onChange={(e) => setChairmanModelName(e.target.value)}
                 placeholder={chairmanProvider === 'openrouter' ? 'e.g. google/gemini-3-pro-preview' : 'e.g. gemini-3-pro-preview'}
+              />
+            </div>
+          </div>
+
+          <div className="admin-form-group">
+            <label>Chairman / Moderator Fallback</label>
+            <p className="admin-hint">Used automatically when the primary chairman model fails (e.g. 503/timeout).</p>
+            <div className="model-input-row">
+              <select
+                value={chairmanFallbackProvider}
+                onChange={(e) => setChairmanFallbackProvider(e.target.value)}
+                className="provider-select"
+              >
+                {PROVIDER_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}{isProviderConfigured(opt.value) ? '' : ' (no key)'}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="text"
+                value={chairmanFallbackModelName}
+                onChange={(e) => setChairmanFallbackModelName(e.target.value)}
+                placeholder={chairmanFallbackProvider === 'openrouter' ? 'e.g. openai/gpt-5.1' : 'e.g. gpt-5.1'}
               />
             </div>
           </div>

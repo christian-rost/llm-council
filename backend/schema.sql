@@ -46,6 +46,7 @@ CREATE TABLE app_settings (
 -- Default values
 INSERT INTO app_settings (key, value) VALUES
     ('chairman_model', '"google/gemini-3-pro-preview"'),
+    ('chairman_fallback_model', '"openai/gpt-5.1"'),
     ('council_models', '["openai/gpt-5.1", "google/gemini-3-pro-preview", "anthropic/claude-sonnet-4.5", "x-ai/grok-4"]');
 
 -- API Keys for public REST API

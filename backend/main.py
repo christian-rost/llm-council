@@ -122,6 +122,7 @@ class ResetPasswordRequest(BaseModel):
 class UpdateSettingsRequest(BaseModel):
     """Request to update admin settings."""
     chairman_model: Optional[str] = None
+    chairman_fallback_model: Optional[str] = None
     council_models: Optional[List[str]] = None
     web_search_enabled: Optional[bool] = None
 
@@ -644,6 +645,7 @@ async def get_admin_settings(admin: dict = Depends(auth.get_current_admin)):
     """Get current admin settings (admin only)."""
     return {
         "chairman_model": settings.get_chairman_model(),
+        "chairman_fallback_model": settings.get_chairman_fallback_model(),
         "council_models": settings.get_council_models(),
         "web_search_enabled": settings.get_web_search_enabled(),
     }
@@ -657,6 +659,8 @@ async def update_admin_settings(
     """Update admin settings (admin only)."""
     if body.chairman_model is not None:
         settings.set_setting("chairman_model", body.chairman_model)
+    if body.chairman_fallback_model is not None:
+        settings.set_setting("chairman_fallback_model", body.chairman_fallback_model)
     if body.council_models is not None:
         settings.set_setting("council_models", body.council_models)
     if body.web_search_enabled is not None:
@@ -754,6 +758,7 @@ async def public_council(
         "metadata": {
             "council_models": settings.get_council_models(),
             "chairman_model": settings.get_chairman_model(),
+            "chairman_fallback_model": settings.get_chairman_fallback_model(),
             "stage1_failed": metadata.get("stage1_failed", []),
             "stage2_failed": metadata.get("stage2_failed", []),
             "processing_time_seconds": processing_time,

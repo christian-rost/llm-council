@@ -1,8 +1,37 @@
 """3-stage XQT5AIs orchestration with PDF support."""
 
+import asyncio
+import logging
 from typing import List, Dict, Any, Tuple, Optional
 from .providers import query_models_parallel, query_model
-from .settings import get_council_models, get_chairman_model
+from .settings import get_council_models, get_chairman_model, get_chairman_fallback_model
+
+logger = logging.getLogger(__name__)
+
+# Stage 3 resilience defaults: initial attempt + retries
+CHAIRMAN_MAX_ATTEMPTS = 3
+CHAIRMAN_RETRY_BACKOFF_SECONDS = 1.0
+
+
+async def _query_with_retries(
+    model_id: str,
+    messages: List[Dict[str, Any]],
+    max_attempts: int = CHAIRMAN_MAX_ATTEMPTS,
+    base_backoff_seconds: float = CHAIRMAN_RETRY_BACKOFF_SECONDS,
+) -> Optional[Dict[str, Any]]:
+    """Query a single model with retries and exponential backoff."""
+    attempts = max(1, max_attempts)
+    for attempt in range(1, attempts + 1):
+        response = await query_model(model_id, messages)
+        if response is not None:
+            return response
+        if attempt < attempts:
+            delay = base_backoff_seconds * (2 ** (attempt - 1))
+            logger.warning(
+                f"Stage3 attempt {attempt}/{attempts} failed for {model_id}; retrying in {delay:.1f}s"
+            )
+            await asyncio.sleep(delay)
+    return None
 
 
 async def stage1_collect_responses(
@@ -184,20 +213,39 @@ Provide a clear, well-reasoned final answer that represents the council's collec
 
     messages = [{"role": "user", "content": chairman_prompt}]
 
-    # Query the chairman model (no PDF needed for synthesis)
+    # Query chairman model with configured fallback (no PDF needed for synthesis)
     chairman_model = get_chairman_model()
-    response = await query_model(chairman_model, messages)
+    fallback_model = get_chairman_fallback_model()
+    attempted_models = [chairman_model]
+
+    response = await _query_with_retries(chairman_model, messages)
+    used_model = chairman_model
+    fallback_used = False
+
+    if response is None and fallback_model and fallback_model != chairman_model:
+        attempted_models.append(fallback_model)
+        response = await _query_with_retries(fallback_model, messages)
+        if response is not None:
+            used_model = fallback_model
+            fallback_used = True
 
     if response is None:
-        # Fallback if chairman fails
         return {
             "model": chairman_model,
+            "primary_model": chairman_model,
+            "fallback_model": fallback_model,
+            "fallback_used": False,
+            "attempted_models": attempted_models,
             "response": "Error: Unable to generate final synthesis.",
             "raw_response": None,
         }
 
     return {
-        "model": chairman_model,
+        "model": used_model,
+        "primary_model": chairman_model,
+        "fallback_model": fallback_model,
+        "fallback_used": fallback_used,
+        "attempted_models": attempted_models,
         "response": response.get('content', ''),
         "raw_response": response,
     }
