@@ -51,17 +51,11 @@ function App() {
     }
   };
 
-  const createNewConversation = async () => {
-    try {
-      const conv = await api.createConversation();
-      setConversations([conv, ...conversations]);
-      setCurrentConversation(conv);
-      setMessages([]);
-      resetCouncilState();
-      clearPdfState();
-    } catch (error) {
-      console.error('Failed to create conversation:', error);
-    }
+  const createNewConversation = () => {
+    setCurrentConversation(null);
+    setMessages([]);
+    resetCouncilState();
+    clearPdfState();
   };
 
   const selectConversation = async (conv) => {
