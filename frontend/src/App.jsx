@@ -148,19 +148,32 @@ function App() {
   };
 
   const sendMessage = async () => {
-    if (!input.trim() || !currentConversation || loading) return;
+    if (!input.trim() || loading) return;
+
+    let conversation = currentConversation;
+    if (!conversation) {
+      try {
+        conversation = await api.createConversation();
+        setConversations(prev => [conversation, ...prev]);
+        setCurrentConversation(conversation);
+        setMessages([]);
+      } catch (error) {
+        console.error('Failed to create conversation:', error);
+        return;
+      }
+    }
 
     const userMessage = { role: 'user', content: input.trim() };
-    const displayContent = pdfFilename 
+    const displayContent = pdfFilename
       ? `${input.trim()}\n\n📄 Attached: ${pdfFilename}`
       : input.trim();
-    
-    setMessages([...messages, { ...userMessage, content: displayContent }]);
-    
+
+    setMessages(prev => [...prev, { ...userMessage, content: displayContent }]);
+
     const messageContent = input.trim();
     const currentPdfData = pdfData;
     const currentPdfFilename = pdfFilename;
-    
+
     setInput('');
     setLoading(true);
     resetCouncilState();
@@ -169,7 +182,7 @@ function App() {
     try {
       setCurrentStage(1);
       await api.sendMessageStream(
-        currentConversation.id,
+        conversation.id,
         messageContent,
         (data, failed) => {
           setStage1Results(data);
@@ -187,7 +200,7 @@ function App() {
           setCurrentStage(null);
         },
         (title) => {
-          setCurrentConversation({ ...currentConversation, title });
+          setCurrentConversation(prev => prev ? { ...prev, title } : { ...conversation, title });
           loadConversations();
         },
         currentPdfData,
@@ -572,9 +585,60 @@ function App() {
         {view === 'admin' ? (
           <AdminDashboard />
         ) : !currentConversation ? (
-          <div className="welcome">
-            <h2>Welcome to XQT5AIs</h2>
-            <p>Create a new conversation to get started</p>
+          <div className="welcome-new">
+            <div className="welcome-header">
+              <h1 className="welcome-title">XQT5AIs</h1>
+              <p className="welcome-subtitle">5 AI models deliberate — one synthesized answer.</p>
+            </div>
+            <div className="welcome-input-area">
+              {pdfFilename && (
+                <div className="pdf-badge">
+                  <span>📄 {pdfFilename}</span>
+                  <button onClick={removePdf} className="remove-pdf" title="Remove PDF">×</button>
+                </div>
+              )}
+              <div className="welcome-input-row">
+                <input
+                  type="file"
+                  accept=".pdf"
+                  onChange={handlePdfUpload}
+                  ref={fileInputRef}
+                  style={{ display: 'none' }}
+                  id="pdf-upload-welcome"
+                />
+                <textarea
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder={pdfFilename ? "Ask a question about the PDF..." : "Ask the council a question..."}
+                  disabled={loading}
+                  rows={5}
+                  className="welcome-textarea"
+                />
+              </div>
+              <div className="welcome-actions">
+                <button
+                  className="upload-btn"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={loading || uploadingPdf}
+                  title="Upload PDF"
+                >
+                  {uploadingPdf ? '⏳' : '📎'}
+                </button>
+                <button
+                  className="welcome-send-btn"
+                  onClick={sendMessage}
+                  disabled={loading || !input.trim()}
+                >
+                  {loading ? '...' : 'Ask the Council →'}
+                </button>
+              </div>
+              <p className="pdf-hint">
+                {pdfFilename
+                  ? "PDF will be analyzed by OpenRouter's native PDF processing"
+                  : "Tip: Upload a PDF to have the council analyze it"}
+              </p>
+            </div>
           </div>
         ) : (
           <>
