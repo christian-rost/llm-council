@@ -587,8 +587,8 @@ function App() {
         ) : !currentConversation ? (
           <div className="welcome-new">
             <div className="welcome-header">
-              <h1 className="welcome-title">XQT5AIs</h1>
-              <p className="welcome-subtitle">5 AI models deliberate — one synthesized answer.</p>
+              <h2>Welcome to XQT5AIs</h2>
+              <p>Create a new conversation to get started</p>
             </div>
             <div className="welcome-input-area">
               {pdfFilename && (

@@ -192,19 +192,6 @@ body {
   text-align: center;
 }
 
-.welcome-title {
-  font-size: 42px;
-  font-weight: 700;
-  color: var(--color-primary);
-  margin-bottom: 10px;
-  letter-spacing: -1px;
-}
-
-.welcome-subtitle {
-  font-size: 16px;
-  color: #666;
-}
-
 .welcome-input-area {
   width: 100%;
   max-width: 720px;
