@@ -178,15 +178,18 @@ function App() {
       await api.sendMessageStream(
         conversation.id,
         messageContent,
-        (data, failed) => {
+        (data, failed, failures) => {
           setStage1Results(data);
-          setFailedModels(prev => ({ ...prev, stage1: failed || [] }));
+          setFailedModels(prev => ({ ...prev, stage1: normalizeFailures(failures, failed) }));
           setCurrentStage(2);
         },
         (data, meta) => {
           setStage2Results(data);
           setMetadata(meta);
-          setFailedModels(prev => ({ ...prev, stage2: meta?.stage2_failed || [] }));
+          setFailedModels(prev => ({
+            ...prev,
+            stage2: normalizeFailures(meta?.stage2_errors, meta?.stage2_failed),
+          }));
           setCurrentStage(3);
         },
         (data) => {
@@ -202,7 +205,10 @@ function App() {
       );
     } catch (error) {
       console.error('Failed to send message:', error);
-      alert(`Error: ${error.message}`);
+      const details = (error.failures || [])
+        .map(f => `• ${getModelDisplayName(f.model)}: ${f.error || 'failed'}`)
+        .join('\n');
+      alert(details ? `${error.message}\n\n${details}` : `Error: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -258,14 +264,93 @@ function App() {
     return msg.stage1 || msg.stage2 || msg.stage3;
   };
 
-  const renderFailedModelsBanner = (failed, totalCount) => {
-    if (!failed || failed.length === 0) return null;
+  // Failures arrive as objects {model, error, fallback_model, fallback_error};
+  // older stored messages only have a list of model-name strings.
+  const normalizeFailures = (...sources) => {
+    const source = sources.find(s => Array.isArray(s) && s.length > 0) || [];
+    return source
+      .filter(Boolean)
+      .map(entry => (typeof entry === 'string' ? { model: entry } : entry));
+  };
+
+  const renderFailedModelsBanner = (failures, totalCount) => {
+    const entries = normalizeFailures(failures);
+    if (entries.length === 0) return null;
     return (
       <div className="failed-models-banner">
-        <span>&#9888; {failed.length} of {totalCount} model{totalCount !== 1 ? 's' : ''} failed: {failed.map(m => getModelDisplayName(m)).join(', ')}</span>
+        <div className="notice-title">
+          &#9888; {entries.length} of {totalCount} model{totalCount !== 1 ? 's' : ''} failed
+        </div>
+        <ul className="notice-list">
+          {entries.map((entry, idx) => (
+            <li key={entry.model || idx}>
+              <strong>{getModelDisplayName(entry.model)}</strong>
+              {entry.error ? ` — ${entry.error}` : ''}
+              {entry.fallback_model && (
+                <div className="notice-sub">
+                  Fallback {getModelDisplayName(entry.fallback_model)} also failed
+                  {entry.fallback_error ? ` — ${entry.fallback_error}` : ''}
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
       </div>
     );
   };
+
+  // Models that answered only because their slot's fallback stepped in
+  const renderFallbackBanner = (results) => {
+    const used = (results || []).filter(r => r && r.fallback_used);
+    if (used.length === 0) return null;
+    return (
+      <div className="fallback-models-banner">
+        <div className="notice-title">
+          &#8635; {used.length} model{used.length !== 1 ? 's' : ''} replaced by fallback
+        </div>
+        <ul className="notice-list">
+          {used.map((entry, idx) => (
+            <li key={entry.model || idx}>
+              <strong>{getModelDisplayName(entry.primary_model)}</strong> failed
+              {entry.primary_error ? ` — ${entry.primary_error}` : ''}
+              <div className="notice-sub">
+                Answered by {getModelDisplayName(entry.model)} instead
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  };
+
+  const renderStageErrorBanner = (stage3) => {
+    if (!stage3 || !stage3.error) return null;
+    return (
+      <div className="failed-models-banner">
+        <div className="notice-title">
+          &#9888; Chairman {getModelDisplayName(stage3.primary_model || stage3.model)} failed
+        </div>
+        <ul className="notice-list">
+          <li>
+            {stage3.error}
+            {stage3.fallback_model && (
+              <div className="notice-sub">
+                Fallback {getModelDisplayName(stage3.fallback_model)} also failed
+                {stage3.fallback_error ? ` — ${stage3.fallback_error}` : ''}
+              </div>
+            )}
+          </li>
+        </ul>
+      </div>
+    );
+  };
+
+  const renderModelTabLabel = (result) => (
+    <>
+      {getModelDisplayName(result.model)}
+      {result.fallback_used && <span className="fallback-badge" title={`Fallback for ${result.primary_model}`}>&#8635;</span>}
+    </>
+  );
 
   // Render a loaded assistant message with stage data
   const renderLoadedAssistantMessage = (msg) => {
@@ -291,9 +376,10 @@ function App() {
           <div className="stage-section">
             <h3>Stage 1: Individual Responses</h3>
             {renderFailedModelsBanner(
-              msg.metadata?.stage1_failed,
+              normalizeFailures(msg.metadata?.stage1_errors, msg.metadata?.stage1_failed),
               msg.stage1.length + (msg.metadata?.stage1_failed?.length || 0)
             )}
+            {renderFallbackBanner(msg.stage1)}
             <div className="tabs">
               {msg.stage1.map((result, idx) => (
                 <button
@@ -301,12 +387,12 @@ function App() {
                   className={`tab ${safeActiveTab === idx ? 'active' : ''}`}
                   onClick={() => setActiveTab(idx)}
                 >
-                  {getModelDisplayName(result.model)}
+                  {renderModelTabLabel(result)}
                 </button>
               ))}
-              {msg.metadata?.stage1_failed?.map((model) => (
-                <span key={model} className="tab failed">
-                  {getModelDisplayName(model)}
+              {normalizeFailures(msg.metadata?.stage1_errors, msg.metadata?.stage1_failed).map((entry, idx) => (
+                <span key={entry.model || idx} className="tab failed" title={entry.error || 'Failed'}>
+                  {getModelDisplayName(entry.model)}
                 </span>
               ))}
             </div>
@@ -319,9 +405,10 @@ function App() {
           <div className="stage-section">
             <h3>Stage 2: Peer Reviews</h3>
             {renderFailedModelsBanner(
-              msg.metadata?.stage2_failed,
+              normalizeFailures(msg.metadata?.stage2_errors, msg.metadata?.stage2_failed),
               msg.stage2.length + (msg.metadata?.stage2_failed?.length || 0)
             )}
+            {renderFallbackBanner(msg.stage2)}
             {msg.metadata?.aggregate_rankings && Array.isArray(msg.metadata.aggregate_rankings) && msg.metadata.aggregate_rankings.length > 0 && (
               <div className="rankings">
                 <h4>Aggregate Rankings</h4>
@@ -339,6 +426,15 @@ function App() {
         {msg.stage3 && (
           <div className="stage-section final-answer">
             <h3>Stage 3: Final Council Answer</h3>
+            {renderStageErrorBanner(msg.stage3)}
+            {msg.stage3.fallback_used && (
+              <div className="fallback-models-banner">
+                <div className="notice-title">
+                  &#8635; Chairman {getModelDisplayName(msg.stage3.primary_model)} failed
+                  {msg.stage3.primary_error ? ` — ${msg.stage3.primary_error}` : ''}
+                </div>
+              </div>
+            )}
             {msg.stage3.model && (
               <div className="chairman-badge">
                 Chairman: {getModelDisplayName(msg.stage3.model)}
@@ -352,7 +448,9 @@ function App() {
   };
 
   const renderStage1 = () => {
-    if (!stage1Results || !Array.isArray(stage1Results) || stage1Results.length === 0) return null;
+    if (!stage1Results || !Array.isArray(stage1Results)) return null;
+    // Still render when every model failed — the banner is the whole point then
+    if (stage1Results.length === 0 && failedModels.stage1.length === 0) return null;
 
     return (
       <div className="stage-section">
@@ -363,6 +461,7 @@ function App() {
           failedModels.stage1,
           stage1Results.length + failedModels.stage1.length
         )}
+        {renderFallbackBanner(stage1Results)}
         <div className="tabs">
           {stage1Results.map((result, idx) => (
             <button
@@ -370,12 +469,12 @@ function App() {
               className={`tab ${activeTab === idx ? 'active' : ''}`}
               onClick={() => setActiveTab(idx)}
             >
-              {getModelDisplayName(result.model)}
+              {renderModelTabLabel(result)}
             </button>
           ))}
-          {failedModels.stage1.map((model) => (
-            <span key={model} className="tab failed">
-              {getModelDisplayName(model)}
+          {failedModels.stage1.map((entry, idx) => (
+            <span key={entry.model || idx} className="tab failed" title={entry.error || 'Failed'}>
+              {getModelDisplayName(entry.model)}
             </span>
           ))}
         </div>
@@ -398,6 +497,7 @@ function App() {
           failedModels.stage2,
           stage2Results.length + failedModels.stage2.length
         )}
+        {renderFallbackBanner(stage2Results)}
         {metadata.aggregate_rankings && Array.isArray(metadata.aggregate_rankings) && (
           <div className="rankings">
             <h4>Aggregate Rankings</h4>
@@ -422,6 +522,15 @@ function App() {
         <div className="stage-header">
           <h3>Stage 3: Final Council Answer</h3>
         </div>
+        {renderStageErrorBanner(stage3Result)}
+        {stage3Result.fallback_used && (
+          <div className="fallback-models-banner">
+            <div className="notice-title">
+              &#8635; Chairman {getModelDisplayName(stage3Result.primary_model)} failed
+              {stage3Result.primary_error ? ` — ${stage3Result.primary_error}` : ''}
+            </div>
+          </div>
+        )}
         <div className="chairman-badge">
           Chairman: {getModelDisplayName(stage3Result.model)}
         </div>

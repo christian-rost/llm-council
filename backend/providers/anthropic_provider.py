@@ -4,6 +4,8 @@ import logging
 import httpx
 from typing import List, Dict, Any, Optional
 
+from .base import ProviderError, format_exception, format_http_error
+
 logger = logging.getLogger(__name__)
 
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
@@ -68,7 +70,8 @@ async def query(
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(ANTHROPIC_URL, headers=headers, json=payload)
-            response.raise_for_status()
+            if response.is_error:
+                raise ProviderError(format_http_error(response.status_code, response.text))
             data = response.json()
 
             # Handle pause_turn: continue the conversation to get full response
@@ -78,7 +81,8 @@ async def query(
                 ]
                 cont_payload = {**payload, "messages": continued_messages}
                 response = await client.post(ANTHROPIC_URL, headers=headers, json=cont_payload)
-                response.raise_for_status()
+                if response.is_error:
+                    raise ProviderError(format_http_error(response.status_code, response.text))
                 data = response.json()
 
             # Anthropic returns content as a list of blocks
@@ -112,6 +116,9 @@ async def query(
                     "cached_tokens": usage.get("cache_read_input_tokens", 0),
                 }
             }
+    except ProviderError as e:
+        logger.error(f"Anthropic error for {model}: {e}")
+        raise
     except Exception as e:
         logger.error(f"Anthropic error for {model}: {e}")
-        return None
+        raise ProviderError(format_exception(e)) from e

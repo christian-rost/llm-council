@@ -3,9 +3,9 @@
 import asyncio
 import logging
 import os
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 
-from .base import PROVIDER_CONFIGS
+from .base import PROVIDER_CONFIGS, ProviderError, format_exception
 from . import openrouter, openai_provider, anthropic_provider, google_provider, xai_provider
 
 logger = logging.getLogger(__name__)
@@ -48,6 +48,44 @@ def get_api_key(provider: str) -> str | None:
     return None
 
 
+async def query_model_result(
+    model_id: str,
+    messages: List[Dict[str, Any]],
+    timeout: float = 120.0,
+    pdf_data: Optional[str] = None,
+    pdf_filename: Optional[str] = None,
+    web_search: bool = False,
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """Query a model and return (response, error_reason).
+
+    On success the reason is None; on failure the response is None and the
+    reason is a short, user-safe explanation (HTTP status + provider message,
+    timeout, empty response, ...).
+    """
+    provider, _ = parse_model_id(model_id)
+
+    try:
+        response = await _dispatch(
+            model_id, messages,
+            timeout=timeout, pdf_data=pdf_data, pdf_filename=pdf_filename,
+            web_search=web_search,
+        )
+    except ProviderError as e:
+        return None, str(e)
+    except Exception as e:
+        logger.error(f"Unexpected error querying {model_id}: {e}")
+        return None, format_exception(e)
+
+    if response is None:
+        return None, f"No response from provider '{provider}'"
+
+    if not (response.get("content") or "").strip():
+        logger.error(f"{model_id} returned an empty response")
+        return None, "Model returned an empty response"
+
+    return response, None
+
+
 async def query_model(
     model_id: str,
     messages: List[Dict[str, Any]],
@@ -59,13 +97,30 @@ async def query_model(
     """Dispatch a query to the correct provider based on model_id.
 
     This is the main entry point — drop-in replacement for openrouter.query_model().
+    Returns None on failure; use query_model_result() to get the reason.
     """
+    response, _error = await query_model_result(
+        model_id, messages,
+        timeout=timeout, pdf_data=pdf_data, pdf_filename=pdf_filename,
+        web_search=web_search,
+    )
+    return response
+
+
+async def _dispatch(
+    model_id: str,
+    messages: List[Dict[str, Any]],
+    timeout: float = 120.0,
+    pdf_data: Optional[str] = None,
+    pdf_filename: Optional[str] = None,
+    web_search: bool = False,
+) -> Optional[Dict[str, Any]]:
+    """Route the query to the provider handler. Raises ProviderError on failure."""
     provider, bare_model = parse_model_id(model_id)
     api_key = get_api_key(provider)
 
     if not api_key:
-        logger.error(f"No API key configured for provider '{provider}' (model: {model_id})")
-        return None
+        raise ProviderError(f"No API key configured for provider '{provider}'")
 
     if provider == "openrouter":
         return await openrouter.query(
@@ -97,8 +152,7 @@ async def query_model(
             web_search=web_search,
         )
     else:
-        logger.error(f"Unknown provider '{provider}' for model '{model_id}'")
-        return None
+        raise ProviderError(f"Unknown provider '{provider}'")
 
 
 async def query_models_parallel(

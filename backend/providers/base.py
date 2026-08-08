@@ -2,13 +2,53 @@
 
 import base64
 import hashlib
+import json
 import logging
 
+import httpx
 from cryptography.fernet import Fernet, InvalidToken
 
 from ..config import JWT_SECRET
 
 logger = logging.getLogger(__name__)
+
+# Max length of a provider error reason shown to users
+MAX_ERROR_DETAIL = 300
+
+
+class ProviderError(Exception):
+    """A provider request failed. The message is a short, user-safe reason."""
+
+
+def format_http_error(status_code: int, body: str) -> str:
+    """Build a compact reason from an HTTP error response body."""
+    detail = ""
+    try:
+        data = json.loads(body)
+        error = data.get("error", data) if isinstance(data, dict) else data
+        if isinstance(error, dict):
+            detail = error.get("message") or error.get("detail") or ""
+        elif isinstance(error, str):
+            detail = error
+    except (ValueError, TypeError):
+        detail = ""
+
+    if not detail:
+        detail = body
+
+    detail = " ".join(str(detail).split())[:MAX_ERROR_DETAIL]
+    return f"HTTP {status_code}: {detail}" if detail else f"HTTP {status_code}"
+
+
+def format_exception(exc: Exception) -> str:
+    """Build a compact reason from an exception raised while querying."""
+    if isinstance(exc, httpx.TimeoutException):
+        return "Timeout: provider did not respond in time"
+    if isinstance(exc, httpx.HTTPError):
+        return f"Network error: {exc.__class__.__name__}"
+
+    detail = " ".join(str(exc).split())[:MAX_ERROR_DETAIL]
+    return f"{exc.__class__.__name__}: {detail}" if detail else exc.__class__.__name__
 
 # Provider configurations: name, base URL, env var for API key
 PROVIDER_CONFIGS = {

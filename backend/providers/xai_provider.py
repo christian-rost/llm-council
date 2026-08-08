@@ -9,6 +9,8 @@ import logging
 import httpx
 from typing import List, Dict, Any, Optional
 
+from .base import ProviderError, format_exception, format_http_error
+
 logger = logging.getLogger(__name__)
 
 # Responses API endpoints per provider
@@ -30,8 +32,7 @@ async def query(
     """Query via Responses API with web_search tool."""
     url = RESPONSES_URLS.get(provider)
     if not url:
-        logger.error(f"No Responses API URL configured for provider '{provider}'")
-        return None
+        raise ProviderError(f"No Responses API URL configured for provider '{provider}'")
 
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -66,12 +67,7 @@ async def query(
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(url, headers=headers, json=payload)
             if not response.is_success:
-                body = response.text[:500]
-                logger.error(
-                    f"{provider} Responses API error for {model}: "
-                    f"HTTP {response.status_code} — {body}"
-                )
-                return None
+                raise ProviderError(format_http_error(response.status_code, response.text))
             data = response.json()
 
             # Check if web search was actually invoked
@@ -107,6 +103,9 @@ async def query(
                     "cached_tokens": 0,  # Responses API doesn't expose cached tokens
                 }
             }
+    except ProviderError as e:
+        logger.error(f"{provider} Responses API error for {model}: {e}")
+        raise
     except Exception as e:
         logger.error(f"{provider} Responses API error for {model}: {e}")
-        return None
+        raise ProviderError(format_exception(e)) from e

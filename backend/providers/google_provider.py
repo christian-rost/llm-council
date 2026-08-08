@@ -4,7 +4,7 @@ import logging
 import httpx
 from typing import List, Dict, Any, Optional
 
-from .base import PROVIDER_CONFIGS
+from .base import PROVIDER_CONFIGS, ProviderError, format_exception, format_http_error
 
 logger = logging.getLogger(__name__)
 
@@ -63,14 +63,18 @@ async def query(
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(url, json=payload)
-            response.raise_for_status()
+            if response.is_error:
+                raise ProviderError(format_http_error(response.status_code, response.text))
             data = response.json()
 
             # Extract text from candidates[0].content.parts
             candidates = data.get("candidates", [])
             if not candidates:
-                logger.error(f"Gemini: no candidates in response for {model}")
-                return None
+                block_reason = (data.get("promptFeedback") or {}).get("blockReason")
+                raise ProviderError(
+                    f"No candidates in response (blocked: {block_reason})"
+                    if block_reason else "No candidates in response"
+                )
 
             parts = candidates[0].get("content", {}).get("parts", [])
             text_parts = [p.get("text", "") for p in parts if "text" in p]
@@ -88,6 +92,9 @@ async def query(
                     "cached_tokens": 0,  # Gemini doesn't have cached tokens like OpenAI
                 }
             }
+    except ProviderError as e:
+        logger.error(f"Google error for {model}: {e}")
+        raise
     except Exception as e:
         logger.error(f"Google error for {model}: {e}")
-        return None
+        raise ProviderError(format_exception(e)) from e

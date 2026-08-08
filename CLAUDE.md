@@ -59,9 +59,12 @@ Web search can be enabled globally via Admin Dashboard toggle (stored in `app_se
 - **`__init__.py`**: Registry + Dispatcher
   - `parse_model_id(model_id)` → `(provider, bare_model)` with backward-compat
   - `get_api_key(provider)` → DB first, then env var fallback
-  - `query_model(model_id, messages, ...)` → Dispatches to correct provider
+  - `query_model_result(model_id, messages, ...)` → `(response, error_reason)` — the reason is a short, user-safe string (`"HTTP 429: You have no credits remaining…"`, `"Timeout: provider did not respond in time"`, `"No API key configured for provider 'openai'"`, `"Model returned an empty response"`)
+  - `query_model(model_id, messages, ...)` → Thin wrapper, returns the response or `None` (no reason)
   - `query_models_parallel(models, messages, ...)` → Parallel queries via `asyncio.gather()`
-- **`base.py`**: `PROVIDER_CONFIGS` dict, Fernet encryption helpers (`encrypt_value`, `decrypt_value`, key derived from `JWT_SECRET`)
+  - An **empty/blank response counts as a failure** (previously a silent empty answer)
+- **`base.py`**: `PROVIDER_CONFIGS` dict, Fernet encryption helpers (`encrypt_value`, `decrypt_value`, key derived from `JWT_SECRET`), `ProviderError` + `format_http_error()` / `format_exception()`
+  - **All provider handlers raise `ProviderError` on failure** (instead of returning `None`), so the reason survives up to the UI. HTTP errors are checked via `response.is_error` — never `raise_for_status()`, which throws away the response body containing the provider's message.
 - **`openrouter.py`**: OpenRouter-specific handler (PDF via file-parser plugin)
 - **`openai_provider.py`**: OpenAI-compatible handler (works for OpenAI, xAI, Mistral; PDF as base64 image_url)
 - **`anthropic_provider.py`**: Anthropic Messages API (system param, content blocks, PDF as document block, `max_tokens: 8192`, `web_search_20250305` tool for web search)
@@ -108,9 +111,10 @@ Web search can be enabled globally via Admin Dashboard toggle (stored in `app_se
 
 **`council.py`** - The Core Logic
 - Imports from `providers` (not `openrouter` directly)
-- `stage1_collect_responses()`: Parallel queries to all council models → returns `(results, failed_models)` — accepts `web_search` flag
-- `stage2_collect_rankings()`: Anonymized peer rankings → returns `(results, label_to_model, failed_models)`
-- `stage3_synthesize_final()`: Chairman synthesizes final answer
+- `stage1_collect_responses()`: Parallel queries to all council models → returns `(results, failures, raw_responses)` — accepts `web_search` flag
+- `stage2_collect_rankings()`: Anonymized peer rankings → returns `(results, label_to_model, failures, raw_responses)`
+- `stage3_synthesize_final()`: Chairman synthesizes final answer; on failure the result carries `error` (+ `fallback_error`), on fallback success `primary_error`
+- **Failure records**: `failures` is a list of `{model, error, fallback_model, fallback_error}`; `failed_model_names(failures)` yields the plain name list kept in `metadata.stage1_failed` / `stage2_failed` for backward compatibility
 - `parse_ranking_from_text()`: Extracts "FINAL RANKING:" section
 - `calculate_aggregate_rankings()`: Computes average rank position
 - `run_full_council()`: Orchestrates all 3 stages, includes `stage1_failed` + `stage2_failed` in metadata
@@ -166,7 +170,8 @@ Web search can be enabled globally via Admin Dashboard toggle (stored in `app_se
 
 **`api.js`**
 - API client with auth headers
-- `sendMessageStream()`: SSE streaming with callbacks — `onStage1(data, failedModels)`, `onStage2(data, metadata)`
+- `sendMessageStream()`: SSE streaming with callbacks — `onStage1(data, failedModels, failures)`, `onStage2(data, metadata)`
+  - **Chunk buffering**: SSE events larger than one network chunk are reassembled across reads (`decoder.decode(value, {stream: true})` + line buffer). Without this, large `stage1_complete` payloads were dropped silently — the stage simply never appeared and no error was shown.
 - Admin methods: `getAdminSettings()`, `updateAdminSettings()`, `getAdminUsers()`, `deleteAdminUser()`
 - **Provider methods**: `getAdminProviders()`, `setAdminProviderKey()`, `deleteAdminProviderKey()`, `testAdminProvider()`
 
@@ -296,9 +301,11 @@ Provider API keys can also be managed via Admin Dashboard (encrypted in DB, take
 ### Error Handling Philosophy
 - Continue with successful responses if some models fail
 - Never fail the entire request due to single model failure
-- Log errors internally, show generic messages to users
-- **Failed models are transparent**: Users see a warning banner ("X of Y models failed") and greyed-out tabs for failed models in Stage 1/2
-- Failed model lists stored in `metadata.stage1_failed` / `metadata.stage2_failed` (JSONB, no schema change needed)
+- Log errors internally; show the **provider's reason** for model failures (billing, rate limit, timeout, bad model ID) — these are operational, not internal implementation details
+- **Failed models are transparent**: Users see a warning banner ("X of Y models failed") with the reason per model, plus greyed-out tabs in Stage 1/2
+- **Fallbacks are transparent**: When a slot's primary model fails and its fallback answers, an amber banner names the failed primary + reason, and the tab carries a ↻ badge — otherwise a dead model (e.g. exhausted OpenAI credits) would stay invisible forever
+- **All models failed**: The stream emits an `error` event and stops instead of running Stage 2/3 on nothing
+- Stored in `metadata` (JSONB, no schema change): `stage1_failed` / `stage2_failed` (names, backward compatible) and `stage1_errors` / `stage2_errors` (full failure records). The frontend falls back to the name-only list for messages stored before this.
 
 ## Important Implementation Details
 

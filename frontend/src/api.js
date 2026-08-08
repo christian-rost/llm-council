@@ -201,49 +201,64 @@ export const api = {
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
+    let buffer = '';
+
+    // Handles one complete SSE line. Returns true when the stream is finished.
+    const handleLine = (line) => {
+      if (!line.startsWith('data: ')) return false;
+
+      const data = line.slice(6);
+      if (data === '[DONE]') return true;
+
+      let parsed;
+      try {
+        parsed = JSON.parse(data);
+      } catch (e) {
+        console.error('Failed to parse SSE data:', e);
+        return false;
+      }
+
+      switch (parsed.type) {
+        case 'stage1_complete':
+          onStage1?.(parsed.data, parsed.failed_models, parsed.failures);
+          break;
+        case 'stage2_complete':
+          onStage2?.(parsed.data, parsed.metadata);
+          break;
+        case 'stage3_complete':
+          onStage3?.(parsed.data);
+          break;
+        case 'title_complete':
+          onTitleUpdate?.(parsed.data?.title);
+          break;
+        case 'complete':
+          return true;
+        case 'error': {
+          const error = new Error(parsed.message || 'Unknown error');
+          error.failures = parsed.failures || [];
+          throw error;
+        }
+      }
+      return false;
+    };
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
 
-      const chunk = decoder.decode(value);
-      const lines = chunk.split('\n');
+      // Events can be split across chunks — buffer until a line is complete
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
 
       for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6);
-          if (data === '[DONE]') return;
-
-          try {
-            const parsed = JSON.parse(data);
-            switch (parsed.type) {
-              case 'stage1_complete':
-                onStage1?.(parsed.data, parsed.failed_models);
-                break;
-              case 'stage2_complete':
-                onStage2?.(parsed.data, parsed.metadata);
-                break;
-              case 'stage3_complete':
-                onStage3?.(parsed.data);
-                break;
-              case 'title_complete':
-                onTitleUpdate?.(parsed.data?.title);
-                break;
-              case 'complete':
-                // Streaming complete
-                return;
-              case 'error':
-                throw new Error(parsed.message || 'Unknown error');
-            }
-          } catch (e) {
-            if (e.message && !e.message.includes('JSON')) {
-              throw e; // Re-throw non-JSON errors
-            }
-            console.error('Failed to parse SSE data:', e);
-          }
-        }
+        if (handleLine(line)) return;
       }
     }
+
+    // Flush whatever is left once the stream ends
+    buffer += decoder.decode();
+    if (buffer) handleLine(buffer);
   },
 
   /**

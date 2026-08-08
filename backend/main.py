@@ -19,8 +19,8 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from . import storage, user_storage, auth, settings, api_keys
-from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
-from .providers import query_model as provider_query_model
+from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings, failed_model_names
+from .providers import query_model_result as provider_query_model_result
 from .providers.base import PROVIDER_CONFIGS
 from .token_tracking import store_stage_usage, store_usage_from_response, get_usage_stats
 
@@ -525,23 +525,33 @@ async def send_message_stream(
             # Stage 1: Collect responses (with optional PDF)
             web_search = settings.get_web_search_enabled()
             yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
-            stage1_results, stage1_failed, stage1_raw = await stage1_collect_responses(
+            stage1_results, stage1_failures, stage1_raw = await stage1_collect_responses(
                 body.content,
                 pdf_data=body.pdf_data,
                 pdf_filename=body.pdf_filename,
                 web_search=web_search,
             )
-            yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results, 'failed_models': stage1_failed})}\n\n"
+            stage1_failed = failed_model_names(stage1_failures)
+            yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results, 'failed_models': stage1_failed, 'failures': stage1_failures})}\n\n"
+
+            # If every council model failed, stages 2 and 3 cannot produce anything useful
+            if not stage1_results:
+                logger.error(f"All council models failed for conversation {conversation_id}")
+                yield f"data: {json.dumps({'type': 'error', 'message': 'All council models failed to respond.', 'failures': stage1_failures})}\n\n"
+                return
 
             # Stage 2: Collect rankings (no PDF needed - working with text responses)
             yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
-            stage2_results, label_to_model, stage2_failed, stage2_raw = await stage2_collect_rankings(body.content, stage1_results)
+            stage2_results, label_to_model, stage2_failures, stage2_raw = await stage2_collect_rankings(body.content, stage1_results)
+            stage2_failed = failed_model_names(stage2_failures)
             aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
             metadata = {
                 "label_to_model": label_to_model,
                 "aggregate_rankings": aggregate_rankings,
                 "stage1_failed": stage1_failed,
                 "stage2_failed": stage2_failed,
+                "stage1_errors": stage1_failures,
+                "stage2_errors": stage2_failures,
             }
             yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': metadata})}\n\n"
 
@@ -776,6 +786,8 @@ async def public_council(
             "chairman_fallback_model": settings.get_chairman_fallback_model(),
             "stage1_failed": metadata.get("stage1_failed", []),
             "stage2_failed": metadata.get("stage2_failed", []),
+            "stage1_errors": metadata.get("stage1_errors", []),
+            "stage2_errors": metadata.get("stage2_errors", []),
             "processing_time_seconds": processing_time,
         },
     }
@@ -878,10 +890,10 @@ async def test_provider(
 
     messages = [{"role": "user", "content": "Reply with only the word: OK"}]
     try:
-        result = await provider_query_model(model_id, messages, timeout=30.0)
+        result, error = await provider_query_model_result(model_id, messages, timeout=30.0)
         if result and result.get("content"):
             return {"status": "ok", "provider": provider, "response": result["content"][:100]}
-        return {"status": "error", "provider": provider, "message": "No response received"}
+        return {"status": "error", "provider": provider, "message": error or "No response received"}
     except Exception as e:
         return {"status": "error", "provider": provider, "message": str(e)}
 

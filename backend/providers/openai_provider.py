@@ -4,7 +4,7 @@ import logging
 import httpx
 from typing import List, Dict, Any, Optional
 
-from .base import PROVIDER_CONFIGS
+from .base import PROVIDER_CONFIGS, ProviderError, format_exception, format_http_error
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,8 @@ async def query(
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(base_url, headers=headers, json=payload)
-            response.raise_for_status()
+            if response.is_error:
+                raise ProviderError(format_http_error(response.status_code, response.text))
             data = response.json()
 
             message = data["choices"][0]["message"]
@@ -85,6 +86,9 @@ async def query(
                     "cached_tokens": prompt_tokens_details.get("cached_tokens", 0),
                 }
             }
+    except ProviderError as e:
+        logger.error(f"{provider} error for {model}: {e}")
+        raise
     except Exception as e:
         logger.error(f"{provider} error for {model}: {e}")
-        return None
+        raise ProviderError(format_exception(e)) from e
